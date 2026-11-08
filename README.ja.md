@@ -15,11 +15,12 @@ Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-O
 1. **トークン消費ゼロのインラインチャット HUD (Hook モード)**
    - Antigravity の `PreInvocation` ライフサイクルフックを活用し、チャット画面上に `metadata.user_markdown` 形式で残量メーターを表示。
    - モデルへのプロンプト入力トークンは一切消費しません（`systemMessage: ""` による完全ゼロオーバーヘッド）。
+   - **5h 制限と 1w 制限のデュアル表示**: `RetrieveUserQuotaSummary` RPC と連携し、直近の 5時間バースト制限（5h）と 1週間制限（Weekly / 1w）の両方を高精度に取得・表示。
    - **超コンパクトな1行表示**: デフォルトでは現在会話で選択中のモデルのみを1行ステータスバナーとして表示し、会話の邪魔になりません。
    - フォールバック & カスタマイズ対応: 選択中のモデルが未検出の場合は自動で全モデルテーブルにフォールバック。`--all` または環境変数 `AGQ_SHOW_ALL=1` で全モデル表示、`AGQ_HUD_FORMAT=table` でテーブル表示にも切り替え可能。
 
 2. **ターミナルから手軽に確認できる CLI モード (`agq` / `agq-hud`)**
-   - いつでもターミナルから `agq` と叩くだけで、各モデルの残量バーと次回リセットまでのカウントダウンをテーブル表示。
+   - いつでもターミナルから `agq` と叩くだけで、各モデルの 5時間制限 / 週間制限と次回リセットまでのカウントダウンをテーブル表示。
    - `agq [フィルター]`: モデル名やファミリー名で絞り込み表示（例: `agq flash`, `agq claude`）。
    - `-v` / `--verbose` で低・中・高バリアント（Low / Medium / High）の詳細一覧を表示。
    - `--json` で外部スクリプト連携用の JSON 出力に対応。
@@ -62,7 +63,7 @@ git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 
 プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、会話の邪魔にならないコンパクトなインライン HUD がチャット上部にレンダリングされます：
 
-> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; `67.3%` 🟢 `███████░░░` &nbsp;·&nbsp; Reset: **12m** &nbsp;·&nbsp; `Google AI Pro`
+> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; 5h: `64.5%` 🟢 (3m) &nbsp;·&nbsp; 1w: `75.5%` 🟢 (5d 16h) &nbsp;·&nbsp; `Google AI Pro`
 
 *(※全モデルを一覧表示したい場合は `--all` や環境変数 `AGQ_SHOW_ALL=1` を指定できます。単一モデルでもテーブル形式にしたい場合は `AGQ_HUD_FORMAT=table` を指定できます)*
 
@@ -96,15 +97,15 @@ agq --version
 ⚡ AGQ HUD — Model Quota Monitor
 Tier: Google AI Pro (user@example.com)
 
-──────────────────────────────────────────────────────────────
- Model              Remaining Gauge         Resets In     
-──────────────────────────────────────────────────────────────
- Gemini 4 Argon     12.7%     [█░░░░░░░░░]  5d 17h        
- Gemini 3.8 Flash   75.9%     [████████░░]  1h 22m        
- Claude Opus 5.5    32.9%     [███░░░░░░░]  5d 17h        
- Claude Sonnet 5.5  32.9%     [███░░░░░░░]  5d 17h        
- GPT-OSS 120B       32.9%     [███░░░░░░░]  5d 17h        
-──────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────
+ Model              5h Limit      Weekly Limit  Reset (5h)    Reset (1w)    
+────────────────────────────────────────────────────────────────────────────────
+ Gemini 4 Argon     -             12.7% ⚠️      -             5d 16h        
+ Gemini 3.8 Flash   64.5% 🟢      75.5% 🟢      3m            5d 16h        
+ Claude Opus 5.5    100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
+ Claude Sonnet 5.5  100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
+ GPT-OSS 120B       100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
+────────────────────────────────────────────────────────────────────────────────
 Tip: Run with -v or --verbose to view all model sub-variants.
 ```
 

@@ -1,4 +1,4 @@
-import { fetchUserStatus, parseQuotaSummary } from './client.js';
+import { fetchFullQuota, parseQuotaSummary } from './client.js';
 import { detectConnection } from './detector.js';
 import { formatCliTable, formatHookMarkdown } from './formatter.js';
 import { HookInput, HookPreInvocationOutput } from './types.js';
@@ -54,8 +54,8 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
       return;
     }
 
-    const statusData = await fetchUserStatus(conn, 2500);
-    const summary = parseQuotaSummary(statusData);
+    const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
+    const summary = parseQuotaSummary(statusData, quotaSummaryData);
     const markdown = formatHookMarkdown(summary, hookInput.modelName, {
       forceAll: flags.showAll,
     });
@@ -90,8 +90,8 @@ async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: 
       process.exit(1);
     }
 
-    const statusData = await fetchUserStatus(conn, 4000);
-    const summary = parseQuotaSummary(statusData);
+    const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 4000);
+    const summary = parseQuotaSummary(statusData, quotaSummaryData);
 
     if (flags.json) {
       console.log(JSON.stringify(summary, null, 2));

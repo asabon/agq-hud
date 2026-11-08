@@ -79,6 +79,79 @@ function fetchUserStatus(conn, timeoutMs = 3e3) {
     req.end();
   });
 }
+function fetchUserQuotaSummary(conn, timeoutMs = 3e3) {
+  return new Promise((resolve) => {
+    let host = "localhost";
+    let port = 80;
+    if (conn.address.includes(":")) {
+      const parts = conn.address.split(":");
+      host = parts[0] || "localhost";
+      port = Number(parts[1]) || 80;
+    } else {
+      host = conn.address;
+    }
+    const postData = JSON.stringify({
+      metadata: {
+        ideName: "antigravity",
+        extensionName: "antigravity",
+        locale: "en"
+      }
+    });
+    const req = import_http.default.request(
+      {
+        hostname: host,
+        port,
+        path: "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Connect-Protocol-Version": "1",
+          "x-codeium-csrf-token": conn.csrfToken,
+          "Content-Length": Buffer.byteLength(postData)
+        },
+        timeout: timeoutMs
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const data = JSON.parse(body);
+              resolve(data);
+            } catch {
+              resolve(void 0);
+            }
+          } else {
+            resolve(void 0);
+          }
+        });
+      }
+    );
+    req.on("error", () => resolve(void 0));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(void 0);
+    });
+    req.write(postData);
+    req.end();
+  });
+}
+async function fetchFullQuota(conn, timeoutMs = 3e3) {
+  const [statusResult, summaryResult] = await Promise.allSettled([
+    fetchUserStatus(conn, timeoutMs),
+    fetchUserQuotaSummary(conn, timeoutMs)
+  ]);
+  if (statusResult.status === "rejected") {
+    throw statusResult.reason;
+  }
+  const statusData = statusResult.value;
+  const quotaSummaryData = summaryResult.status === "fulfilled" ? summaryResult.value : void 0;
+  return { statusData, quotaSummaryData };
+}
 function parseModelFamily(label) {
   const match = label.match(/^(.*?)(?:\s*\((Low|Medium|High)\))?$/i);
   if (match) {
@@ -89,13 +162,81 @@ function parseModelFamily(label) {
   }
   return { family: label, variant: "" };
 }
-function parseQuotaSummary(data) {
+function parseServerQuotaGroups(quotaSummary, now = /* @__PURE__ */ new Date()) {
+  const rawGroups = quotaSummary?.response?.groups || [];
+  const result = [];
+  for (const g of rawGroups) {
+    const displayName = g.displayName || "Unknown Group";
+    const buckets = [];
+    let limit5h;
+    let limitWeekly;
+    for (const b of g.buckets || []) {
+      const bucketId = b.bucketId || "unknown";
+      const bDisplayName = b.displayName || bucketId;
+      const window = (b.window || "").toLowerCase();
+      const fraction = b.remainingFraction ?? 1;
+      const remainingPercentage = Math.round(fraction * 1e3) / 10;
+      let resetDate;
+      let timeUntilResetMs;
+      if (b.resetTime) {
+        resetDate = new Date(b.resetTime);
+        timeUntilResetMs = Math.max(0, resetDate.getTime() - now.getTime());
+      }
+      const bucketInfo = {
+        bucketId,
+        displayName: bDisplayName,
+        description: b.description,
+        window: window === "weekly" ? "weekly" : window === "5h" ? "5h" : window,
+        remainingFraction: fraction,
+        remainingPercentage,
+        resetTime: b.resetTime,
+        resetDate,
+        timeUntilResetMs
+      };
+      buckets.push(bucketInfo);
+      if (window === "5h" || bucketId.includes("5h")) {
+        limit5h = bucketInfo;
+      } else if (window === "weekly" || bucketId.includes("weekly")) {
+        limitWeekly = bucketInfo;
+      }
+    }
+    result.push({
+      displayName,
+      buckets,
+      limit5h,
+      limitWeekly
+    });
+  }
+  return result;
+}
+function findServerGroupForFamily(family, groups) {
+  const f = family.toLowerCase().trim();
+  if (f.includes("argon")) {
+    return groups.find((g) => g.displayName.toLowerCase().includes("argon"));
+  }
+  if (f.includes("gemini")) {
+    return groups.find(
+      (g) => g.displayName.toLowerCase().includes("gemini") && !g.displayName.toLowerCase().includes("argon")
+    );
+  }
+  if (f.includes("claude") || f.includes("gpt")) {
+    return groups.find(
+      (g) => g.displayName.toLowerCase().includes("claude") || g.displayName.toLowerCase().includes("gpt")
+    );
+  }
+  return groups.find((g) => {
+    const d = g.displayName.toLowerCase();
+    return d.includes(f) || f.includes(d);
+  });
+}
+function parseQuotaSummary(data, quotaSummaryData) {
   const userStatus = data.userStatus;
   const userTierName = userStatus?.userTier?.name || userStatus?.planStatus?.planInfo?.planName || "Standard";
   const planName = userStatus?.planStatus?.planInfo?.planName;
   const userEmail = userStatus?.email;
   const rawConfigs = userStatus?.cascadeModelConfigData?.clientModelConfigs || [];
   const now = /* @__PURE__ */ new Date();
+  const parsedServerGroups = parseServerQuotaGroups(quotaSummaryData, now);
   const allModels = rawConfigs.filter((c) => c.quotaInfo !== void 0).map((c) => {
     const { family, variant } = parseModelFamily(c.label);
     const remainingFraction = c.quotaInfo.remainingFraction;
@@ -106,6 +247,7 @@ function parseQuotaSummary(data) {
       resetDate = new Date(c.quotaInfo.resetTime);
       timeUntilResetMs = Math.max(0, resetDate.getTime() - now.getTime());
     }
+    const serverGroup = findServerGroupForFamily(family, parsedServerGroups);
     return {
       label: c.label,
       modelId: c.modelId,
@@ -114,7 +256,9 @@ function parseQuotaSummary(data) {
       remainingPercentage,
       resetTime: c.quotaInfo.resetTime,
       resetDate,
-      timeUntilResetMs
+      timeUntilResetMs,
+      limit5h: serverGroup?.limit5h,
+      limitWeekly: serverGroup?.limitWeekly
     };
   });
   const groupMap = /* @__PURE__ */ new Map();
@@ -127,12 +271,19 @@ function parseQuotaSummary(data) {
   const groups = [];
   for (const [family, models] of groupMap.entries()) {
     const rep = models[0];
+    const serverGroup = findServerGroupForFamily(family, parsedServerGroups);
+    const primaryPercentage = serverGroup?.limit5h?.remainingPercentage ?? rep.remainingPercentage;
+    const primaryResetTime = serverGroup?.limit5h?.resetTime ?? rep.resetTime;
+    const primaryResetMs = serverGroup?.limit5h?.timeUntilResetMs ?? rep.timeUntilResetMs;
     groups.push({
       family,
-      remainingPercentage: rep.remainingPercentage,
-      resetTime: rep.resetTime,
-      timeUntilResetMs: rep.timeUntilResetMs,
-      models
+      remainingPercentage: primaryPercentage,
+      resetTime: primaryResetTime,
+      timeUntilResetMs: primaryResetMs,
+      models,
+      limit5h: serverGroup?.limit5h,
+      limitWeekly: serverGroup?.limitWeekly,
+      buckets: serverGroup?.buckets || []
     });
   }
   return {
@@ -437,11 +588,24 @@ function findMatchingGroup(groups, currentModelName) {
   return void 0;
 }
 function formatCompactHookMarkdown(group, userTierName) {
+  const tier = userTierName ? ` &nbsp;\xB7&nbsp; \`${userTierName}\`` : "";
+  if (group.limit5h && group.limitWeekly) {
+    const badge5h = getStatusBadge(group.limit5h.remainingPercentage);
+    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const reset5h = formatTimeRemaining(group.limit5h.timeUntilResetMs);
+    const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
+    return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; 5h: \`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${badge5h.emoji} (${reset5h}) &nbsp;\xB7&nbsp; 1w: \`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${badgeW.emoji} (${resetW})${tier}`;
+  }
+  if (group.limitWeekly && !group.limit5h) {
+    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const bar2 = makeProgressBar(group.limitWeekly.remainingPercentage, 10);
+    const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
+    return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; 1w: \`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${badgeW.emoji} \`${bar2}\` &nbsp;\xB7&nbsp; Reset: **${resetW}**${tier}`;
+  }
   const badge = getStatusBadge(group.remainingPercentage);
   const bar = makeProgressBar(group.remainingPercentage, 10);
   const resetStr = formatTimeRemaining(group.timeUntilResetMs);
   const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
-  const tier = userTierName ? ` &nbsp;\xB7&nbsp; \`${userTierName}\`` : "";
   return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; ${pctDisplay} ${badge.emoji} \`${bar}\` &nbsp;\xB7&nbsp; Reset: **${resetStr}**${tier}`;
 }
 function formatHookMarkdown(summary, currentModelName, options) {
@@ -453,19 +617,34 @@ function formatHookMarkdown(summary, currentModelName, options) {
   }
   const targetGroups = matchedGroup ? [matchedGroup] : summary.groups;
   const tier = summary.userTierName || "Standard";
+  const hasMultiWindow = targetGroups.some((g) => g.limit5h !== void 0 || g.limitWeekly !== void 0);
   const lines = [];
   lines.push(`> \u{1F4CA} **AI Model Quota** &nbsp;\xB7&nbsp; \`${tier}\``);
   lines.push(`> `);
-  lines.push(`> | Model | Remaining | Bar | Reset In |`);
-  lines.push(`> | :--- | :--- | :--- | :--- |`);
-  for (const group of targetGroups) {
-    const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
-    const badge = getStatusBadge(group.remainingPercentage);
-    const bar = makeProgressBar(group.remainingPercentage, 10);
-    const resetStr = formatTimeRemaining(group.timeUntilResetMs);
-    const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
-    const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
-    lines.push(`> | ${nameDisplay} | ${pctDisplay} ${badge.emoji} | \`${bar}\` | ${resetStr} |`);
+  if (hasMultiWindow) {
+    lines.push(`> | Model | 5h Limit | 1w Limit | Reset (5h) | Reset (1w) |`);
+    lines.push(`> | :--- | :--- | :--- | :--- | :--- |`);
+    for (const group of targetGroups) {
+      const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
+      const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
+      const p5h = group.limit5h ? `\`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limit5h.remainingPercentage).emoji}` : "-";
+      const pW = group.limitWeekly ? `\`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limitWeekly.remainingPercentage).emoji}` : "-";
+      const reset5h = group.limit5h ? formatTimeRemaining(group.limit5h.timeUntilResetMs) : "-";
+      const resetW = group.limitWeekly ? formatTimeRemaining(group.limitWeekly.timeUntilResetMs) : "-";
+      lines.push(`> | ${nameDisplay} | ${p5h} | ${pW} | ${reset5h} | ${resetW} |`);
+    }
+  } else {
+    lines.push(`> | Model | Remaining | Bar | Reset In |`);
+    lines.push(`> | :--- | :--- | :--- | :--- |`);
+    for (const group of targetGroups) {
+      const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
+      const badge = getStatusBadge(group.remainingPercentage);
+      const bar = makeProgressBar(group.remainingPercentage, 10);
+      const resetStr = formatTimeRemaining(group.timeUntilResetMs);
+      const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
+      const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
+      lines.push(`> | ${nameDisplay} | ${pctDisplay} ${badge.emoji} | \`${bar}\` | ${resetStr} |`);
+    }
   }
   return lines.join("\n");
 }
@@ -481,11 +660,15 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
   let targetList = verbose ? summary.allModels.map((m) => ({
     name: m.label,
     percentage: m.remainingPercentage,
-    resetMs: m.timeUntilResetMs
+    resetMs: m.timeUntilResetMs,
+    limit5h: m.limit5h,
+    limitWeekly: m.limitWeekly
   })) : summary.groups.map((g) => ({
     name: g.family,
     percentage: g.remainingPercentage,
-    resetMs: g.timeUntilResetMs
+    resetMs: g.timeUntilResetMs,
+    limit5h: g.limit5h,
+    limitWeekly: g.limitWeekly
   }));
   if (filter) {
     const f = filter.toLowerCase().trim();
@@ -496,30 +679,73 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
       return out.join("\n");
     }
   }
-  const maxNameLen = Math.max(16, ...targetList.map((item) => item.name.length));
-  const colName = maxNameLen + 2;
-  const colPct = 10;
-  const colBar = 14;
-  const colReset = 14;
-  const sep = "\u2500".repeat(colName + colPct + colBar + colReset + 5);
-  out.push(sep);
-  out.push(
-    ` ${"Model".padEnd(colName)}${"Remaining".padEnd(colPct)}${"Gauge".padEnd(colBar)}${"Resets In".padEnd(colReset)}`
-  );
-  out.push(sep);
-  for (const item of targetList) {
-    const badge = getStatusBadge(item.percentage);
-    const color = isTty ? badge.colorCode : "";
-    const bar = `[${makeProgressBar(item.percentage, 10)}]`;
-    const pctStr = `${item.percentage.toFixed(1)}%`;
-    const resetStr = formatTimeRemaining(item.resetMs);
-    const nameCol = item.name.padEnd(colName);
-    const pctCol = `${color}${pctStr.padEnd(colPct)}${resetCode}`;
-    const barCol = `${color}${bar.padEnd(colBar)}${resetCode}`;
-    const resetCol = resetStr.padEnd(colReset);
-    out.push(` ${nameCol}${pctCol}${barCol}${resetCol}`);
+  const hasMultiWindow = targetList.some((item) => item.limit5h !== void 0 || item.limitWeekly !== void 0);
+  if (hasMultiWindow) {
+    const maxNameLen = Math.max(16, ...targetList.map((item) => item.name.length));
+    const colName = maxNameLen + 2;
+    const col5h = 14;
+    const col1w = 14;
+    const colReset5h = 14;
+    const colReset1w = 14;
+    const sep = "\u2500".repeat(colName + col5h + col1w + colReset5h + colReset1w + 5);
+    out.push(sep);
+    out.push(
+      ` ${"Model".padEnd(colName)}${"5h Limit".padEnd(col5h)}${"Weekly Limit".padEnd(col1w)}${"Reset (5h)".padEnd(
+        colReset5h
+      )}${"Reset (1w)".padEnd(colReset1w)}`
+    );
+    out.push(sep);
+    for (const item of targetList) {
+      const nameCol = item.name.padEnd(colName);
+      let p5hStr = "-";
+      let color5h = "";
+      if (item.limit5h) {
+        const badge = getStatusBadge(item.limit5h.remainingPercentage);
+        color5h = isTty ? badge.colorCode : "";
+        p5hStr = `${item.limit5h.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
+      }
+      const col5hText = `${color5h}${p5hStr.padEnd(col5h)}${resetCode}`;
+      let pWStr = "-";
+      let colorW = "";
+      if (item.limitWeekly) {
+        const badge = getStatusBadge(item.limitWeekly.remainingPercentage);
+        colorW = isTty ? badge.colorCode : "";
+        pWStr = `${item.limitWeekly.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
+      }
+      const col1wText = `${colorW}${pWStr.padEnd(col1w)}${resetCode}`;
+      const reset5hStr = item.limit5h ? formatTimeRemaining(item.limit5h.timeUntilResetMs) : "-";
+      const resetWStr = item.limitWeekly ? formatTimeRemaining(item.limitWeekly.timeUntilResetMs) : "-";
+      const reset5hCol = reset5hStr.padEnd(colReset5h);
+      const resetWCol = resetWStr.padEnd(colReset1w);
+      out.push(` ${nameCol}${col5hText}${col1wText}${reset5hCol}${resetWCol}`);
+    }
+    out.push(sep);
+  } else {
+    const maxNameLen = Math.max(16, ...targetList.map((item) => item.name.length));
+    const colName = maxNameLen + 2;
+    const colPct = 10;
+    const colBar = 14;
+    const colReset = 14;
+    const sep = "\u2500".repeat(colName + colPct + colBar + colReset + 5);
+    out.push(sep);
+    out.push(
+      ` ${"Model".padEnd(colName)}${"Remaining".padEnd(colPct)}${"Gauge".padEnd(colBar)}${"Resets In".padEnd(colReset)}`
+    );
+    out.push(sep);
+    for (const item of targetList) {
+      const badge = getStatusBadge(item.percentage);
+      const color = isTty ? badge.colorCode : "";
+      const bar = `[${makeProgressBar(item.percentage, 10)}]`;
+      const pctStr = `${item.percentage.toFixed(1)}%`;
+      const resetStr = formatTimeRemaining(item.resetMs);
+      const nameCol = item.name.padEnd(colName);
+      const pctCol = `${color}${pctStr.padEnd(colPct)}${resetCode}`;
+      const barCol = `${color}${bar.padEnd(colBar)}${resetCode}`;
+      const resetCol = resetStr.padEnd(colReset);
+      out.push(` ${nameCol}${pctCol}${barCol}${resetCol}`);
+    }
+    out.push(sep);
   }
-  out.push(sep);
   if (!verbose && !filter && summary.allModels.length > summary.groups.length) {
     out.push(`${dimCode}Tip: Run with -v or --verbose to view all model sub-variants.${resetCode}`);
   }
@@ -567,8 +793,8 @@ async function handleHookMode(flags) {
       process.stdout.write("{}\n");
       return;
     }
-    const statusData = await fetchUserStatus(conn, 2500);
-    const summary = parseQuotaSummary(statusData);
+    const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
+    const summary = parseQuotaSummary(statusData, quotaSummaryData);
     const markdown = formatHookMarkdown(summary, hookInput.modelName, {
       forceAll: flags.showAll
     });
@@ -598,8 +824,8 @@ async function handleCliMode(flags) {
       console.error("   Please ensure Antigravity 2.0 / CLI / IDE is currently running.");
       process.exit(1);
     }
-    const statusData = await fetchUserStatus(conn, 4e3);
-    const summary = parseQuotaSummary(statusData);
+    const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 4e3);
+    const summary = parseQuotaSummary(statusData, quotaSummaryData);
     if (flags.json) {
       console.log(JSON.stringify(summary, null, 2));
       return;
