@@ -58,7 +58,7 @@ This skill analyzes git commit history and code diffs since the previous release
    - Update `VERSION` constant in [`src/index.ts`](../../../src/index.ts) (e.g. `const VERSION = '0.1.0';`).
 
 3. **Update `CHANGELOG.md`**:
-   - Add a new `## [vX.Y.Z] - YYYY-MM-DD` section directly below the header separator (`---`) in [`CHANGELOG.md`](../../../CHANGELOG.md).
+   - Add a new `## [vX.Y.Z] - YYYY-MM-DD` section directly below the header separator (`---`) in [`CHANGELOG.md`](../../../CHANGELOG.md) and append the drafted release notes beneath it.
 
 4. **Run Build & Typecheck**:
    - Rebuild the single-file distribution bundle [`bin/agq.cjs`](../../../bin/agq.cjs).

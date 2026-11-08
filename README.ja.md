@@ -47,7 +47,7 @@ agy plugin install https://github.com/asabon/agq-hud
 git clone https://github.com/asabon/agq-hud.git %USERPROFILE%\.gemini\config\plugins\agq-hud
 
 # macOS / Linux
-git clone https://github.com/asabon/agq-hud.git ~/.gemini/config\plugins\agq-hud
+git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 ```
 
 インストール後、次回の会話ターンから自動的にチャット画面上に Quota HUD が表示されます。
