@@ -3,37 +3,37 @@ name: publish-release
 description: Publish a new release for agq-hud. Pushes the release tag, publishes the GitHub Draft Release, and verifies the published Release on GitHub.
 ---
 
-# リリース公開スキル (`publish-release`)
+# Release Publication Skill (`publish-release`)
 
-ユーザーから「リリース PR をマージしました」「公開してください」と連絡を受けた際に実行する手順です。
-リリースタグを作成・push し、`prepare-release` で作成された Draft Release を正式な Release として公開します。
+Execute this procedure when the user notifies you that the release PR has been merged, or instructs you to "publish the release".
+This skill tags the commit, pushes the tag, and publishes the GitHub Draft Release created during `prepare-release`.
 
 ---
 
-## 📋 実行手順
+## 📋 Execution Steps
 
-### 1. ローカル `main` の最新化 & トピックブランチの削除
+### 1. Update Local `main` & Cleanup Topic Branch
 
 ```powershell
 git switch main
 git pull origin main
 git fetch --prune
-# 不要になったリリース用ローカルブランチを削除
+# Delete the local release branch now that it is merged
 git branch -D chore/release-vX.Y.Z
 ```
 
 ---
 
-### 2. リリースタグの作成 & push
+### 2. Create & Push Release Tag
 
-1. [`package.json`](../../../package.json) に記載されているバージョン番号を確認します：
+1. Check the version number in [`package.json`](../../../package.json):
 
    ```powershell
    $ver = node -p "require('./package.json').version"
    Write-Host "Releasing version: v$ver"
    ```
 
-2. 対応するタグ（例: `v0.1.0`）を作成し、リモートへ push します：
+2. Create the tag (e.g. `v0.1.0`) and push to remote:
 
    ```powershell
    git tag "v$ver"
@@ -42,24 +42,24 @@ git branch -D chore/release-vX.Y.Z
 
 ---
 
-### 3. GitHub Release の正式公開
+### 3. Publish GitHub Release
 
-1. `prepare-release` で作成された Draft Release を正式公開（`--draft=false`）に切り替えます：
+1. Convert the Draft Release created in `prepare-release` into a published release (`--draft=false`):
 
    ```powershell
-   # タグに対応するドラフトを正式公開
+   # Publish draft release associated with this tag
    gh release edit "v$ver" --draft=false
    ```
 
-   - もしドラフトが存在しない場合は、`CHANGELOG.md` の最新エントリから即座に作成・公開します：
+   - If no draft release exists, create and publish one directly using `CHANGELOG.md`:
 
    ```powershell
    gh release create "v$ver" --title "v$ver" --notes-file "CHANGELOG.md"
    ```
 
-2. 公開された Release の URL を確認し、ユーザーへ案内して完了とします：
-   - GitHub Release ページ URL: `https://github.com/asabon/agq-hud/releases/tag/v$ver`
-   - インストール案内:
+2. Confirm the published release URL and share it with the user:
+   - GitHub Release URL: `https://github.com/asabon/agq-hud/releases/tag/v$ver`
+   - Installation guide:
      ```bash
      agy plugin install https://github.com/asabon/agq-hud
      ```

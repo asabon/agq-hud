@@ -1,46 +1,46 @@
-# AI コーディングエージェント開発ガイドライン (`AGENTS.md`)
+# AI Coding Agent Development Guidelines (`AGENTS.md`)
 
-本リポジトリ（`agq-hud`）で作業するすべての AI コーディングエージェント（Antigravity, Cursor, Claude Code, GitHub Copilot 等）は、以下のブランチ運用ルールおよび開発制約を厳格に遵守してください。
-
----
-
-## 🛡️ Git & ブランチ運用ルール（最重要）
-
-1. **`main` ブランチへの直接コミット・プッシュの厳格な禁止**:
-   - リモートの GitHub `main` ブランチ保護ルールに従い、`main` への直接コミットおよびプッシュは絶対に行わないでください。
-   - すべての機能追加・バグ修正・ドキュメント更新・リリース準備は、必ず用途に応じたトピックブランチを作成して作業してください。
-     - 新機能: `feat/xxx`
-     - バグ修正: `fix/xxx`
-     - リリース準備: `chore/release-vX.Y.Z`
-     - 雑務・設定: `chore/xxx`
-
-2. **Pull Request の承認・マージはユーザーのみが実施（エージェントによる自動マージ禁止）**:
-   - AI エージェントの役割は「ブランチ作成 → 実装・検証・ビルド → コミット・プッシュ → PR 作成 → CI 通過確認・URL 案内」までです。
-   - **エージェントが自ら PR の承認（Approve）やマージ（`gh pr merge` 等）を実行することは固く禁止します。**
-   - CI のパスを確認後、ユーザーに PR の URL を案内し、ユーザーによるレビューおよびマージを依頼して待機してください。
-
-3. **リリースフローとの整合性 (`prepare-release` / `publish-release`)**:
-   - リリース準備はスキル [`prepare-release`](.agents/skills/prepare-release/SKILL.md) を通じて `chore/release-vX.Y.Z` ブランチを作成し、PR を作成します。
-   - ユーザーが PR を確認・マージした後に、スキル [`publish-release`](.agents/skills/publish-release/SKILL.md) を実行してリリースタグの push と GitHub Release の正式公開を行います。
+All AI coding agents (Antigravity, Cursor, Claude Code, GitHub Copilot, etc.) working on this repository (`agq-hud`) must strictly adhere to the following branch operation rules and development constraints.
 
 ---
 
-## 📝 Pull Request 作成 & CLI 運用ルール
+## 🛡️ Git & Branching Rules (Critical)
 
-- **PR タイトルは Conventional Commits に準拠**:
-  - `feat:`, `fix:`, `docs:`, `chore:` プレフィックスに続けて、変更要約をわかりやすく記述してください。
-- **`--body-file` の使用義務化**:
-  - シェルコマンドの引数（`--body "..."`）に直接 Markdown を渡さず、必ず一時ファイル（例: `scratch/pr_body.md`）を経由して `gh pr create --body-file <path>` を使用してください（PowerShell 等のエスケープ破損防止のため）。
-  - 送信完了後は一時ファイルを速やかに削除してください。
+1. **Direct Commit and Push to `main` are Strictly Prohibited**:
+   - In accordance with GitHub branch protection rules on `main`, never commit or push directly to `main`.
+   - All feature additions, bug fixes, documentation updates, and release preparations must be developed on appropriate topic branches:
+     - Features: `feat/xxx`
+     - Bug fixes: `fix/xxx`
+     - Release preparations: `chore/release-vX.Y.Z`
+     - Maintenance / Configuration: `chore/xxx`
+
+2. **PR Approval & Merging Must Only Be Performed by the User (No Automated Merging by Agents)**:
+   - The role of an AI agent ends at: "Create branch → Implement, verify, and build → Commit and push → Create PR → Verify CI status → Share PR URL with the user".
+   - **Agents are strictly forbidden from approving or merging PRs (e.g., executing `gh pr merge`).**
+   - After confirming that CI checks have passed, provide the PR URL to the user and request their review and merge.
+
+3. **Consistency with Release Flow (`prepare-release` / `publish-release`)**:
+   - Release preparations are performed via the [`prepare-release`](.agents/skills/prepare-release/SKILL.md) skill, creating a `chore/release-vX.Y.Z` branch and opening a PR.
+   - After the user reviews and merges the PR, execute the [`publish-release`](.agents/skills/publish-release/SKILL.md) skill to push the release tag and publish the GitHub Release.
 
 ---
 
-## ⚙️ 開発・ビルド制約
+## 📝 Pull Request & CLI Rules
 
-1. **単一実行ファイル (`bin/agq.cjs`) の同期更新義務**:
-   - `src/` 配下のソースコードを変更した際は、必ず `npm run typecheck` および `npm run build` を実行して `bin/agq.cjs` を最新状態に再生成してください。
-   - 配布用バンドルファイル `bin/agq.cjs` はソースコードと同じ PR に含めてコミットしてください。
-2. **ゼロ外部依存の維持**:
-   - 高速起動と配布の容易さを維持するため、ランタイム依存パッケージ（`dependencies`）は原則として追加せず、Node.js 標準 API（`http`, `child_process`, `fs` 等）で実装してください。
-3. **改行コード (LF)**:
-   - すべてのテキストファイルは **LF (`\n`)** で統一してください。
+- **PR Titles Must Follow Conventional Commits**:
+  - Use prefixes such as `feat:`, `fix:`, `docs:`, or `chore:` followed by a clear, concise summary.
+- **Mandatory Use of `--body-file`**:
+  - Never pass raw Markdown strings directly to shell arguments (`--body "..."`). Always write the PR description to a temporary file (e.g., `scratch/pr_body.md`) and invoke `gh pr create --body-file <path>` to prevent shell escaping and encoding issues.
+  - Delete temporary files promptly after PR creation.
+
+---
+
+## ⚙️ Development & Build Constraints
+
+1. **Mandatory Synchronization of the Standalone Executable (`bin/agq.cjs`)**:
+   - Whenever source code under `src/` is modified, you must run `npm run typecheck` and `npm run build` to regenerate `bin/agq.cjs`.
+   - Commit the generated bundle file `bin/agq.cjs` together with the source code changes in the same PR.
+2. **Maintain Zero External Runtime Dependencies**:
+   - To ensure fast startup and easy distribution, do not add runtime packages (`dependencies`). Implement functionality using standard Node.js APIs (`http`, `child_process`, `fs`, etc.).
+3. **Line Endings (LF)**:
+   - All text files must use **LF (`\n`)** line endings.
