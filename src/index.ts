@@ -114,7 +114,7 @@ async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: 
   }
 }
 
-const VERSION = '0.0.1';
+const VERSION = '0.1.0';
 
 function printHelp(): void {
   console.log(`

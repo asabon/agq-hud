@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.1.0] - 2026-11-08
+
+### Added
+- **Dual Quota Limit Visibility (5h Burst & Weekly Limits)**:
+  - Communicates directly with Antigravity's `RetrieveUserQuotaSummary` RPC to track both short-term 5-hour rolling limits and 1-week limits simultaneously.
+  - Independent reset countdown timers for both 5h and weekly quotas.
+- **Ultra-Compact Single-Line Chat HUD**:
+  - Automatically identifies the active conversation model and displays a clean, single-line quota badge to avoid cluttering chat history.
+  - Supports `--all` (or `AGQ_SHOW_ALL=1`) and `AGQ_HUD_FORMAT=table` for full overview tables when desired.
+- **Response Footer Rule (`rules/AGENTS.md`)**:
+  - Automatically appends the model quota HUD badge to the bottom of assistant responses without needing to open accordion UI.
+- **Automated Release Skills & Workflows**:
+  - Added `prepare-release` and `publish-release` skills and GitHub Actions CI workflow.
+
+### Changed
+- **CLI Command Unification**:
+  - Unified the standalone executable command name to `agq-hud` to avoid future name collisions with official Antigravity tools.
+
+### Fixed
+- **Language Server Compatibility**:
+  - Fixed metadata field serialization to prevent `language_server` scrubber crashes while ensuring HUD renders reliably in chat.
+- **Plugin Rule Auto-Discovery**:
+  - Renamed plugin rule to `rules/AGENTS.md` conforming to Antigravity's plugin discovery convention.
+
+### Quality & Testing
+- Integrated TypeScript-ESLint with strict code quality rules.
+- Added comprehensive contract tests for hook payloads, CLI flags, package binary exports, and rule file conformance.
+
 ## [v0.0.1] - 2026-11-08
 
 ### Added
