@@ -130,7 +130,12 @@ export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?:
 }
 
 /**
- * Formats a concise title for the Chat UI HUD accordion header
+ * Formats a concise, glanceable title for the Chat UI HUD accordion header.
+ *
+ * @param summary - Parsed quota summary containing model groups and tier information.
+ * @param currentModelName - Optional current model name to highlight or filter.
+ * @param options - Options controlling whether to show all models or a single model group.
+ * @returns Formatted title string including status badges and reset times.
  */
 export function formatHookTitle(
   summary: QuotaSummary,
