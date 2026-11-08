@@ -156,4 +156,13 @@ describe('Hook PreInvocation Contract Verification', () => {
       'agq-hud': 'bin/agq.cjs',
     });
   });
+
+  it('provides plugin agent rule file as rules/AGENTS.md adhering to Antigravity plugin convention', async () => {
+    const rulePath = path.resolve(__dirname, '../../rules/AGENTS.md');
+    const { existsSync, readFileSync } = await import('node:fs');
+
+    assert.ok(existsSync(rulePath), 'rules/AGENTS.md must exist');
+    const content = readFileSync(rulePath, 'utf8');
+    assert.match(content, /Model Quota HUD Display Guideline/);
+  });
 });
