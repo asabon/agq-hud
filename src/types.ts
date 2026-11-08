@@ -54,10 +54,44 @@ export interface GetUserStatusResponse {
   userStatus?: UserStatus;
 }
 
+export interface ServerQuotaBucket {
+  bucketId?: string;
+  displayName?: string;
+  description?: string;
+  window?: string;
+  remainingFraction?: number;
+  resetTime?: string;
+}
+
+export interface ServerQuotaGroup {
+  displayName?: string;
+  description?: string;
+  buckets?: ServerQuotaBucket[];
+}
+
+export interface ServerUserQuotaSummaryResponse {
+  response?: {
+    groups?: ServerQuotaGroup[];
+    description?: string;
+  };
+}
+
 export interface ConnectionInfo {
   address: string; // "localhost:62387" or "127.0.0.1:62387"
   csrfToken: string;
   source: 'env' | 'process';
+}
+
+export interface QuotaBucketInfo {
+  bucketId: string;
+  displayName: string;
+  description?: string;
+  window: '5h' | 'weekly' | string;
+  remainingFraction?: number;
+  remainingPercentage: number;
+  resetTime?: string;
+  resetDate?: Date;
+  timeUntilResetMs?: number;
 }
 
 export interface NormalizedModelQuota {
@@ -69,6 +103,8 @@ export interface NormalizedModelQuota {
   resetTime?: string;
   resetDate?: Date;
   timeUntilResetMs?: number;
+  limit5h?: QuotaBucketInfo;
+  limitWeekly?: QuotaBucketInfo;
 }
 
 export interface ModelGroupQuota {
@@ -77,6 +113,9 @@ export interface ModelGroupQuota {
   resetTime?: string;
   timeUntilResetMs?: number;
   models: NormalizedModelQuota[];
+  limit5h?: QuotaBucketInfo;
+  limitWeekly?: QuotaBucketInfo;
+  buckets: QuotaBucketInfo[];
 }
 
 export interface QuotaSummary {
