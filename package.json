@@ -1,6 +1,6 @@
 {
   "name": "agq-hud",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Real-time AI model quota monitor and inline chat HUD for Antigravity 2.0, CLI, and IDE",
   "main": "bin/agq.cjs",
   "bin": {
