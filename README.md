@@ -13,9 +13,10 @@ A lightweight Antigravity plugin and standalone CLI tool that displays real-time
 ## ✨ Key Features
 
 1. **Zero-Token Overhead Inline Chat HUD (Hook & Rule Mode)**
-   - Utilizes Antigravity's `PreInvocation` lifecycle hook to inject real-time quota information into the turn.
-   - Bundles a built-in agent rule (`rules/AGENTS.md`) to automatically append the quota HUD banner directly to the footer of every assistant response, glanceable without expanding accordions.
-   - **Dual Limit Visibility (5h & Weekly)**: Communicates with Antigravity's `RetrieveUserQuotaSummary` RPC to track both short-term 5-hour burst limits and full 1-week limits.
+   - Utilizes Antigravity's `PreInvocation` lifecycle hook to inject real-time quota information into the conversation.
+   - Bundles a built-in agent rule (`rules/AGENTS.md`) to automatically append the quota HUD banner directly to the **footer of every assistant response**, glanceable without expanding accordions.
+   - Updates the chat UI's **collapsible accordion header** (`renderInfo.title`) with the current model's quota percentage and reset time.
+   - **Dual Limit Visibility (5h & Weekly)**: Communicates with Antigravity's `RetrieveUserQuotaSummary` RPC to track both short-term 5-hour rolling limits and full 1-week limits simultaneously.
    - **Ultra-compact single-line HUD**: By default, displays only the currently active conversation model as an unobtrusive single-line status banner.
    - Fallback / customizable: Automatically falls back to full table view if the active model cannot be detected, or when `--all` / `AGQ_SHOW_ALL=1` is configured.
 
@@ -55,19 +56,30 @@ git clone https://github.com/asabon/agq-hud.git %USERPROFILE%\.gemini\config\plu
 git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 ```
 
-Once installed, the Quota HUD will automatically appear at the top of your chat turns starting with your next interaction.
+Once installed, the Quota HUD banner will automatically appear at the bottom of assistant responses and in chat accordion headers starting with your next interaction.
+
+#### Optional: Enable Global `agq-hud` Terminal Command
+
+To run `agq-hud` directly from any terminal prompt instead of typing `node bin/agq.cjs`:
+
+```bash
+cd <path-to-agq-hud>
+npm link
+```
 
 ---
 
 ## 🚀 Usage
 
-### 1. Hook Mode (Automatic Chat HUD)
+### 1. Hook & Rule Mode (Automatic Chat HUD)
 
-When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before each model invocation and renders an unobtrusive inline Markdown HUD in the Antigravity chat:
+When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before each model invocation. Combined with the bundled agent rule (`rules/AGENTS.md`), the quota HUD is rendered automatically:
 
-> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; 5h: `64.5%` 🟢 (3m) &nbsp;·&nbsp; 1w: `75.5%` 🟢 (5d 16h) &nbsp;·&nbsp; `Google AI Pro`
+1. **Assistant Response Footer**: Appended to the very end of every reply, glanceable without expanding accordions:
 
-*(Note: To show the full table with all models, run with `--all` or set `AGQ_SHOW_ALL=1`. To force table layout for single model, set `AGQ_HUD_FORMAT=table`.)*
+   > 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; 5h: `64.5%` 🟢 (3m) &nbsp;·&nbsp; 1w: `75.5%` 🟢 (5d 16h) &nbsp;·&nbsp; `Google AI Pro`
+
+2. **Collapsible Accordion Header**: Displays active quota metrics in the chat UI's tool/system message accordion title (`renderInfo.title`).
 
 ---
 
@@ -89,9 +101,12 @@ agq-hud -v
 # Output raw JSON
 agq-hud --json
 
-# Print version
+# Print help or version
+agq-hud --help
 agq-hud --version
 ```
+
+*(Note: You can also run `node bin/agq.cjs` directly without `npm link`.)*
 
 #### CLI Output Example:
 
@@ -113,6 +128,17 @@ Tip: Run with -v or --verbose to view all model sub-variants.
 
 ---
 
+### 3. Configuration & Environment Variables
+
+You can customize the HUD format and behavior using environment variables or command-line flags:
+
+| Variable | Values | Description |
+| :--- | :--- | :--- |
+| `AGQ_SHOW_ALL` | `1`, `true` | Show full table of all models in HUD (disables active model filter). Equivalent to `--all`. |
+| `AGQ_HUD_FORMAT` | `table`, `compact` | Force table format even when single active model is detected (default: `compact`). |
+
+---
+
 ## 🛠️ Project Structure
 
 ```text
@@ -121,20 +147,28 @@ agq-hud/
 ├── hooks.json          # PreInvocation lifecycle hook configuration
 ├── package.json        # Build scripts and project metadata
 ├── tsconfig.json       # TypeScript compiler configuration
+├── eslint.config.mjs   # ESLint code quality rules
+├── rules/
+│   └── AGENTS.md       # Plugin agent rule for assistant footer HUD display
 ├── bin/
 │   └── agq.cjs         # Pre-bundled standalone executable
 ├── src/
 │   ├── index.ts        # CLI & Hook entrypoint
+│   ├── hook.ts         # PreInvocation hook payload builder
 │   ├── types.ts        # Type definitions & interfaces
 │   ├── detector.ts     # Cross-platform process/port discovery
 │   ├── client.ts       # Language Server RPC client
 │   └── formatter.ts    # Markdown HUD & CLI table formatters
+├── test/
+│   ├── hook-contract.test.ts # Antigravity contract verification tests
+│   ├── formatter.test.ts     # Formatting & calculation unit tests
+│   └── run.cjs               # Test runner
 └── README.md           # Documentation
 ```
 
 ---
 
-## 🔧 Development & Building
+## 🔧 Development & Testing
 
 ```bash
 # Install development dependencies
@@ -142,6 +176,12 @@ npm install
 
 # Run TypeScript type check
 npm run typecheck
+
+# Run ESLint linter
+npm run lint
+
+# Run contract and unit tests
+npm test
 
 # Build bundle (generates bin/agq.cjs)
 npm run build
