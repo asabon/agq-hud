@@ -13,12 +13,14 @@ A lightweight Antigravity plugin and standalone CLI tool that displays real-time
 ## ✨ Key Features
 
 1. **Zero-Token Overhead Inline Chat HUD (Hook Mode)**
-   - Utilizes Antigravity's `PreInvocation` lifecycle hook to render a clean quota bar chart via `metadata.user_markdown`.
+   - Utilizes Antigravity's `PreInvocation` lifecycle hook to render real-time quota information via `metadata.user_markdown`.
    - **Zero token consumption**: Uses `systemMessage: ""` to avoid feeding prompt tokens to LLMs.
-   - Automatically highlights the currently active conversation model with a target indicator (🎯).
+   - **Ultra-compact single-line HUD**: By default, displays only the currently active conversation model as an unobtrusive single-line status banner.
+   - Fallback / customizable: Automatically falls back to full table view if the active model cannot be detected, or when `--all` / `AGQ_SHOW_ALL=1` is configured.
 
 2. **Standalone Terminal CLI (`agq` / `agq-hud`)**
    - Run `agq` from any terminal or PowerShell window to view quota gauges and reset timers.
+   - `agq [filter]`: Filter quota display by model name or family (e.g. `agq flash`, `agq claude`).
    - `-v` / `--verbose`: Displays detailed breakdown of all sub-variants (Low, Medium, High).
    - `--json`: Outputs machine-readable JSON for custom status bars, prompt integrations, or scripts.
 
@@ -60,17 +62,11 @@ Once installed, the Quota HUD will automatically appear at the top of your chat 
 
 ### 1. Hook Mode (Automatic Chat HUD)
 
-When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before each model invocation and renders an inline Markdown HUD in the Antigravity chat:
+When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before each model invocation and renders an unobtrusive inline Markdown HUD in the Antigravity chat:
 
-> 📊 **AI Model Quota** &nbsp;·&nbsp; `Google AI Pro`
-> 
-> | Model | Remaining | Bar | Reset In |
-> | :--- | :--- | :--- | :--- |
-> | **Gemini 4 Argon** | `12.7%` ⚠️ | `█░░░░░░░░░` | 5d 17h |
-> | **Gemini 3.8 Flash** 🎯 | `75.9%` 🟢 | `████████░░` | 1h 22m |
-> | **Claude Opus 5.5** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
-> | **Claude Sonnet 5.5** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
-> | **GPT-OSS 120B** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
+> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; `67.3%` 🟢 `███████░░░` &nbsp;·&nbsp; Reset: **12m** &nbsp;·&nbsp; `Google AI Pro`
+
+*(Note: To show the full table with all models, run with `--all` or set `AGQ_SHOW_ALL=1`. To force table layout for single model, set `AGQ_HUD_FORMAT=table`.)*
 
 ---
 
@@ -79,8 +75,12 @@ When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before e
 Inspect quotas anytime directly from your terminal:
 
 ```bash
-# Show summary table
+# Show summary table for all models
 agq
+
+# Filter by model name or family
+agq flash
+agq claude
 
 # Show detailed breakdown for all model tiers/variants
 agq -v

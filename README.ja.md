@@ -15,10 +15,12 @@ Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-O
 1. **トークン消費ゼロのインラインチャット HUD (Hook モード)**
    - Antigravity の `PreInvocation` ライフサイクルフックを活用し、チャット画面上に `metadata.user_markdown` 形式で残量メーターを表示。
    - モデルへのプロンプト入力トークンは一切消費しません（`systemMessage: ""` による完全ゼロオーバーヘッド）。
-   - 現在会話中のアクティブモデルに自動でターゲットマーク（🎯）を付与。
+   - **超コンパクトな1行表示**: デフォルトでは現在会話で選択中のモデルのみを1行ステータスバナーとして表示し、会話の邪魔になりません。
+   - フォールバック & カスタマイズ対応: 選択中のモデルが未検出の場合は自動で全モデルテーブルにフォールバック。`--all` または環境変数 `AGQ_SHOW_ALL=1` で全モデル表示、`AGQ_HUD_FORMAT=table` でテーブル表示にも切り替え可能。
 
 2. **ターミナルから手軽に確認できる CLI モード (`agq` / `agq-hud`)**
    - いつでもターミナルから `agq` と叩くだけで、各モデルの残量バーと次回リセットまでのカウントダウンをテーブル表示。
+   - `agq [フィルター]`: モデル名やファミリー名で絞り込み表示（例: `agq flash`, `agq claude`）。
    - `-v` / `--verbose` で低・中・高バリアント（Low / Medium / High）の詳細一覧を表示。
    - `--json` で外部スクリプト連携用の JSON 出力に対応。
 
@@ -58,17 +60,11 @@ git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 
 ### 1. Hook モード (チャット画面自動表示)
 
-プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、以下のようなインライン HUD がチャット上部にレンダリングされます：
+プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、会話の邪魔にならないコンパクトなインライン HUD がチャット上部にレンダリングされます：
 
-> 📊 **AI Model Quota** &nbsp;·&nbsp; `Google AI Pro`
-> 
-> | Model | Remaining | Bar | Reset In |
-> | :--- | :--- | :--- | :--- |
-> | **Gemini 4 Argon** | `12.7%` ⚠️ | `█░░░░░░░░░` | 5d 17h |
-> | **Gemini 3.8 Flash** 🎯 | `75.9%` 🟢 | `████████░░` | 1h 22m |
-> | **Claude Opus 5.5** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
-> | **Claude Sonnet 5.5** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
-> | **GPT-OSS 120B** | `32.9%` 🟡 | `███░░░░░░░` | 5d 17h |
+> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; `67.3%` 🟢 `███████░░░` &nbsp;·&nbsp; Reset: **12m** &nbsp;·&nbsp; `Google AI Pro`
+
+*(※全モデルを一覧表示したい場合は `--all` や環境変数 `AGQ_SHOW_ALL=1` を指定できます。単一モデルでもテーブル形式にしたい場合は `AGQ_HUD_FORMAT=table` を指定できます)*
 
 ---
 
@@ -77,8 +73,12 @@ git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 ターミナルや PowerShell から直接実行できます：
 
 ```bash
-# サマリー表示
+# 全モデルのサマリー表示
 agq
+
+# モデル名やファミリー名で絞り込み
+agq flash
+agq claude
 
 # 詳細一覧（Low / Medium / High 全モデル）
 agq -v

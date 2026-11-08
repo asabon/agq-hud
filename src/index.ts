@@ -35,7 +35,7 @@ async function readStdin(): Promise<string> {
   });
 }
 
-async function handleHookMode(): Promise<void> {
+async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
   try {
     const rawInput = await readStdin();
     let hookInput: HookInput = {};
@@ -56,7 +56,9 @@ async function handleHookMode(): Promise<void> {
 
     const statusData = await fetchUserStatus(conn, 2500);
     const summary = parseQuotaSummary(statusData);
-    const markdown = formatHookMarkdown(summary, hookInput.modelName);
+    const markdown = formatHookMarkdown(summary, hookInput.modelName, {
+      forceAll: flags.showAll,
+    });
 
     const output: HookPreInvocationOutput = {
       injectSteps: [
@@ -79,7 +81,7 @@ async function handleHookMode(): Promise<void> {
   }
 }
 
-async function handleCliMode(flags: { verbose: boolean; json: boolean }): Promise<void> {
+async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: string }): Promise<void> {
   try {
     const conn = await detectConnection();
     if (!conn) {
@@ -97,7 +99,7 @@ async function handleCliMode(flags: { verbose: boolean; json: boolean }): Promis
     }
 
     const isTty = process.stdout.isTTY ?? true;
-    const table = formatCliTable(summary, flags.verbose, isTty);
+    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter);
     console.log(table);
   } catch (err) {
     console.error(`❌ Error fetching quota: ${(err as Error).message}`);
@@ -112,11 +114,15 @@ function printHelp(): void {
 agq-hud - Antigravity AI Model Quota HUD & CLI (v${VERSION})
 
 USAGE:
-  agq [OPTIONS]
-  agq-hud [OPTIONS]
+  agq [OPTIONS] [FILTER]
+  agq-hud [OPTIONS] [FILTER]
+
+ARGUMENTS:
+  [FILTER]       Filter models by name or family (e.g., 'flash', 'claude')
 
 OPTIONS:
   --hook         Run in Lifecycle Hook mode (PreInvocation JSON contract)
+  --all          Display all models in HUD (disables active model filter)
   -v, --verbose  Display all model sub-variants and detailed breakdown
   --json         Output quota summary in raw JSON format
   -V, --version  Show version number
@@ -124,6 +130,7 @@ OPTIONS:
 
 EXAMPLES:
   agq            Show concise quota summary table in terminal
+  agq flash      Show quota for models matching 'flash'
   agq -v         Show detailed quota table with all variants
   agq --json     Get machine-readable quota data
 `);
@@ -142,15 +149,20 @@ async function main(): Promise<void> {
     return;
   }
 
+  const showAll = args.includes('--all') || args.includes('-a');
+
   if (args.includes('--hook')) {
-    await handleHookMode();
+    await handleHookMode({ showAll });
     return;
   }
 
   const verbose = args.includes('-v') || args.includes('--verbose');
   const json = args.includes('--json');
 
-  await handleCliMode({ verbose, json });
+  // Any non-flag positional argument is treated as a filter
+  const filter = args.find((arg) => !arg.startsWith('-'));
+
+  await handleCliMode({ verbose, json, filter });
 }
 
 main().catch((err) => {
