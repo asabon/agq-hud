@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { buildHookOutput } from '../src/index.js';
+import { buildHookOutput } from '../src/hook.js';
 import { parseQuotaSummary } from '../src/client.js';
 import { QuotaSummary } from '../src/types.js';
 

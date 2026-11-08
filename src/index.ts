@@ -1,7 +1,10 @@
 import { fetchFullQuota, parseQuotaSummary } from './client.js';
 import { detectConnection } from './detector.js';
-import { formatCliTable, formatHookMarkdown, formatHookTitle } from './formatter.js';
-import { HookInput, HookPreInvocationOutput } from './types.js';
+import { formatCliTable } from './formatter.js';
+import { buildHookOutput } from './hook.js';
+import { HookInput } from './types.js';
+
+export { buildHookOutput };
 
 /**
  * Reads all data from standard input until EOF.
@@ -40,42 +43,6 @@ async function readStdin(): Promise<string> {
   });
 }
 
-/**
- * Builds the PreInvocation hook output object for Antigravity Language Server.
- *
- * @param summary - Parsed quota summary containing model groups and tier information.
- * @param modelName - Optional current model name to highlight or filter.
- * @param options - Options controlling whether to show all models.
- * @returns PreInvocation hook output payload.
- */
-export function buildHookOutput(
-  summary: ReturnType<typeof parseQuotaSummary>,
-  modelName?: string,
-  options?: { forceAll?: boolean }
-): HookPreInvocationOutput {
-  const markdown = formatHookMarkdown(summary, modelName, {
-    forceAll: options?.forceAll,
-  });
-
-  const title = formatHookTitle(summary, modelName, {
-    forceAll: options?.forceAll,
-  });
-
-  return {
-    injectSteps: [
-      {
-        systemMessage: {
-          systemMessage: markdown,
-          renderInfo: {
-            title,
-            markdown,
-          },
-        },
-      },
-    ],
-    terminationBehavior: '',
-  };
-}
 
 /**
  * Handles Antigravity PreInvocation lifecycle hook mode.

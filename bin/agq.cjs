@@ -784,6 +784,30 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
   return out.join("\n");
 }
 
+// src/hook.ts
+function buildHookOutput(summary, modelName, options) {
+  const markdown = formatHookMarkdown(summary, modelName, {
+    forceAll: options?.forceAll
+  });
+  const title = formatHookTitle(summary, modelName, {
+    forceAll: options?.forceAll
+  });
+  return {
+    injectSteps: [
+      {
+        systemMessage: {
+          systemMessage: markdown,
+          renderInfo: {
+            title,
+            markdown
+          }
+        }
+      }
+    ],
+    terminationBehavior: ""
+  };
+}
+
 // src/index.ts
 async function readStdin() {
   return new Promise((resolve) => {
@@ -808,28 +832,6 @@ async function readStdin() {
       resolve(data);
     });
   });
-}
-function buildHookOutput(summary, modelName, options) {
-  const markdown = formatHookMarkdown(summary, modelName, {
-    forceAll: options?.forceAll
-  });
-  const title = formatHookTitle(summary, modelName, {
-    forceAll: options?.forceAll
-  });
-  return {
-    injectSteps: [
-      {
-        systemMessage: {
-          systemMessage: markdown,
-          renderInfo: {
-            title,
-            markdown
-          }
-        }
-      }
-    ],
-    terminationBehavior: ""
-  };
 }
 async function handleHookMode(flags) {
   try {
