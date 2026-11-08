@@ -67,6 +67,22 @@ cd <path-to-agq-hud>
 npm link
 ```
 
+### 3. Uninstallation & Disabling
+
+- **Temporarily Disable**: Toggle `agq-hud` off in Antigravity's **Customizations** settings page without removing files.
+- **Completely Remove Plugin**: Delete the cloned plugin directory:
+  ```bash
+  # Windows
+  rmdir /s /q "%USERPROFILE%\.gemini\config\plugins\agq-hud"
+
+  # macOS / Linux
+  rm -rf ~/.gemini/config/plugins/agq-hud
+  ```
+- **Unlink Global CLI Command**: If you ran `npm link`, unlink it:
+  ```bash
+  npm unlink -g agq-hud
+  ```
+
 ---
 
 ## 🚀 Usage

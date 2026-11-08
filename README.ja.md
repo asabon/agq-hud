@@ -66,6 +66,22 @@ cd <agq-hudの配置パス>
 npm link
 ```
 
+### 3. アンインストール / 無効化
+
+- **一時的に無効化する**: ファイルを削除せずに停止したい場合は、Antigravity の **Customizations（プラグイン設定）** 画面から `agq-hud` をオフに切り替えます。
+- **プラグインを完全に削除する**: インストールしたプラグインディレクトリを削除します：
+  ```bash
+  # Windows
+  rmdir /s /q "%USERPROFILE%\.gemini\config\plugins\agq-hud"
+
+  # macOS / Linux
+  rm -rf ~/.gemini/config/plugins/agq-hud
+  ```
+- **グローバル CLI コマンドのリンク解除**: 事前に `npm link` を実行していた場合は、グローバルリンクを解除します：
+  ```bash
+  npm unlink -g agq-hud
+  ```
+
 ---
 
 ## 🚀 使い方
