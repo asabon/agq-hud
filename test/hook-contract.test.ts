@@ -144,5 +144,16 @@ describe('Hook PreInvocation Contract Verification', () => {
     assert.match(result, /agq-hud/);
     assert.match(result, /USAGE/);
     assert.match(result, /--hook/);
+    assert.doesNotMatch(result, /^\s*agq\s+\[/m);
+  });
+
+  it('exposes only agq-hud binary command in package.json', async () => {
+    const pkgPath = path.resolve(__dirname, '../../package.json');
+    const { readFileSync } = await import('node:fs');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+
+    assert.deepEqual(pkg.bin, {
+      'agq-hud': 'bin/agq.cjs',
+    });
   });
 });

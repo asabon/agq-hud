@@ -4,7 +4,6 @@
   "description": "Real-time AI model quota monitor and inline chat HUD for Antigravity 2.0, CLI, and IDE",
   "main": "bin/agq.cjs",
   "bin": {
-    "agq": "bin/agq.cjs",
     "agq-hud": "bin/agq.cjs"
   },
   "scripts": {
