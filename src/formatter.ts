@@ -130,6 +130,35 @@ export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?:
 }
 
 /**
+ * Formats a concise title for the Chat UI HUD accordion header
+ */
+export function formatHookTitle(
+  summary: QuotaSummary,
+  currentModelName?: string,
+  options?: { forceAll?: boolean }
+): string {
+  const forceAll = options?.forceAll ?? (process.env.AGQ_SHOW_ALL === '1');
+  const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : undefined;
+
+  if (matchedGroup) {
+    if (matchedGroup.limit5h && matchedGroup.limitWeekly) {
+      const b5h = getStatusBadge(matchedGroup.limit5h.remainingPercentage).emoji;
+      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      return `⚡ Quota: ${matchedGroup.family} · 5h: ${matchedGroup.limit5h.remainingPercentage.toFixed(1)}% ${b5h} · 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
+    }
+    if (matchedGroup.limitWeekly && !matchedGroup.limit5h) {
+      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      return `⚡ Quota: ${matchedGroup.family} · 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
+    }
+    const b = getStatusBadge(matchedGroup.remainingPercentage).emoji;
+    return `⚡ Quota: ${matchedGroup.family} · ${matchedGroup.remainingPercentage.toFixed(1)}% ${b}`;
+  }
+
+  const tier = summary.userTierName ? ` (${summary.userTierName})` : '';
+  return `⚡ Model Quota HUD${tier}`;
+}
+
+/**
  * Formats Markdown HUD for Antigravity Chat UI (metadata.user_markdown)
  */
 export function formatHookMarkdown(

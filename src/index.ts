@@ -1,6 +1,6 @@
 import { fetchFullQuota, parseQuotaSummary } from './client.js';
 import { detectConnection } from './detector.js';
-import { formatCliTable, formatHookMarkdown } from './formatter.js';
+import { formatCliTable, formatHookMarkdown, formatHookTitle } from './formatter.js';
 import { HookInput, HookPreInvocationOutput } from './types.js';
 
 async function readStdin(): Promise<string> {
@@ -60,17 +60,18 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
       forceAll: flags.showAll,
     });
 
+    const title = formatHookTitle(summary, hookInput.modelName, {
+      forceAll: flags.showAll,
+    });
+
     const output: HookPreInvocationOutput = {
       injectSteps: [
         {
           systemMessage: {
             systemMessage: markdown,
             renderInfo: {
-              title: '⚡ Model Quota HUD',
+              title,
               markdown,
-            },
-            metadata: {
-              user_markdown: markdown,
             },
           },
         },
