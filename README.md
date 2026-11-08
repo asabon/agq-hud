@@ -4,41 +4,45 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-ES2022-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-OSS 等）の **Quota（残量メーター・リセット時間）** を毎ターンチャット画面上にインライン表示する公式仕様の Antigravity プラグイン & CLI ツールです。
+**English** | [日本語](README.ja.md)
+
+A lightweight Antigravity plugin and standalone CLI tool that displays real-time **AI model quota gauges and reset countdowns** (for Gemini, Claude, GPT-OSS, and more) inline in your chat turns and terminal for Antigravity 2.0, CLI, and IDE.
 
 ---
 
-## ✨ 主な特長
+## ✨ Key Features
 
-1. **トークン消費ゼロのインラインチャット HUD (Hook モード)**
-   - Antigravity の `PreInvocation` ライフサイクルフックを活用し、チャット画面上に `metadata.user_markdown` 形式で残量メーターを表示。
-   - モデルへのプロンプト入力トークンは一切消費しません（`systemMessage: ""` による完全ゼロオーバーヘッド）。
-   - 現在会話中のアクティブモデルに自動でターゲットマーク（🎯）を付与。
+1. **Zero-Token Overhead Inline Chat HUD (Hook Mode)**
+   - Utilizes Antigravity's `PreInvocation` lifecycle hook to render a clean quota bar chart via `metadata.user_markdown`.
+   - **Zero token consumption**: Uses `systemMessage: ""` to avoid feeding prompt tokens to LLMs.
+   - Automatically highlights the currently active conversation model with a target indicator (🎯).
 
-2. **ターミナルから手軽に確認できる CLI モード (`agq` / `agq-hud`)**
-   - いつでもターミナルから `agq` と叩くだけで、各モデルの残量バーと次回リセットまでのカウントダウンをテーブル表示。
-   - `-v` / `--verbose` で低・中・高バリアント（Low / Medium / High）の詳細一覧を表示。
-   - `--json` で外部スクリプト連携用の JSON 出力に対応。
+2. **Standalone Terminal CLI (`agq` / `agq-hud`)**
+   - Run `agq` from any terminal or PowerShell window to view quota gauges and reset timers.
+   - `-v` / `--verbose`: Displays detailed breakdown of all sub-variants (Low, Medium, High).
+   - `--json`: Outputs machine-readable JSON for custom status bars, prompt integrations, or scripts.
 
-3. **ゼロ依存 & 超高速起動**
-   - `esbuild` により全ロジックを単一ファイル (`bin/agq.cjs`) にバンドル。
-   - 外部 npm パッケージに依存せず、Node.js 標準ライブラリのみで数ミリ秒で起動。
+3. **Zero External Dependencies & Instant Startup**
+   - Pre-bundled into a single executable file (`bin/agq.cjs`) using `esbuild`.
+   - Built purely on standard Node.js runtime APIs without runtime npm dependencies. Starts up in milliseconds.
 
-4. **マルチプラットフォーム対応の自動プロセス探索**
-   - 環境変数（`ANTIGRAVITY_LS_ADDRESS`, `ANTIGRAVITY_CSRF_TOKEN`）を自動検知。
-   - ターミナル単体起動時でも、バックグラウンドで動作している Antigravity 2.0 (`language_server.exe` / `agy`) を Windows / macOS / Linux から自動探索・ポート検出。
+4. **Cross-Platform Auto-Discovery**
+   - Automatically detects Antigravity environment variables (`ANTIGRAVITY_LS_ADDRESS`, `ANTIGRAVITY_CSRF_TOKEN`).
+   - Seamlessly searches and discovers running `language_server` background processes and listening ports across Windows, macOS, and Linux when invoked standalone.
 
 ---
 
-## 📦 インストール方法
+## 📦 Installation
 
-### 1. `agy` コマンドでワンライナー導入
+### 1. One-Liner via `agy` CLI
 
 ```bash
 agy plugin install https://github.com/asabon/agq-hud
 ```
 
-または、ローカルのプラグインディレクトリに配置するだけで即座に自動認識されます。
+### 2. Manual Installation
+
+Clone directly into your Antigravity plugins directory:
 
 ```bash
 # Windows
@@ -48,15 +52,15 @@ git clone https://github.com/asabon/agq-hud.git %USERPROFILE%\.gemini\config\plu
 git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 ```
 
-インストール後、次回の会話ターンから自動的にチャット画面上に Quota HUD が表示されます。
+Once installed, the Quota HUD will automatically appear at the top of your chat turns starting with your next interaction.
 
 ---
 
-## 🚀 使い方
+## 🚀 Usage
 
-### 1. Hook モード (チャット画面自動表示)
+### 1. Hook Mode (Automatic Chat HUD)
 
-プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、以下のようなインライン HUD がチャット上部にレンダリングされます：
+When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before each model invocation and renders an inline Markdown HUD in the Antigravity chat:
 
 > 📊 **AI Model Quota** &nbsp;·&nbsp; `Google AI Pro`
 > 
@@ -70,25 +74,25 @@ git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 
 ---
 
-### 2. CLI モード (`agq` / `agq-hud`)
+### 2. CLI Mode (`agq` / `agq-hud`)
 
-ターミナルや PowerShell から直接実行できます：
+Inspect quotas anytime directly from your terminal:
 
 ```bash
-# サマリー表示
+# Show summary table
 agq
 
-# 詳細一覧（Low / Medium / High 全モデル）
+# Show detailed breakdown for all model tiers/variants
 agq -v
 
-# JSON 形式で出力
+# Output raw JSON
 agq --json
 
-# バージョン確認
+# Print version
 agq --version
 ```
 
-#### CLI 出力例:
+#### CLI Output Example:
 
 ```text
 ⚡ AGQ HUD — Model Quota Monitor
@@ -108,42 +112,42 @@ Tip: Run with -v or --verbose to view all model sub-variants.
 
 ---
 
-## 🛠️ プロジェクト構成
+## 🛠️ Project Structure
 
 ```text
 agq-hud/
-├── plugin.json         # Antigravity 公式プラグインマニフェスト
-├── hooks.json          # PreInvocation ライフサイクルフック定義
-├── package.json        # ビルドスクリプト & 依存関係設定
-├── tsconfig.json       # TypeScript コンパイラ設定
+├── plugin.json         # Antigravity plugin manifest
+├── hooks.json          # PreInvocation lifecycle hook configuration
+├── package.json        # Build scripts and project metadata
+├── tsconfig.json       # TypeScript compiler configuration
 ├── bin/
-│   └── agq.cjs         # バンドル済み単一実行ファイル（配布用）
+│   └── agq.cjs         # Pre-bundled standalone executable
 ├── src/
-│   ├── index.ts        # CLI / Hook エントリポイント
-│   ├── types.ts        # データ型・インターフェース定義
-│   ├── detector.ts     # マルチプラットフォーム プロセス/ポート自動探索
-│   ├── client.ts       # Language Server RPC クライアント
-│   └── formatter.ts    # Markdown HUD & CLI テーブルフォーマッタ
-└── README.md           # 本ドキュメント
+│   ├── index.ts        # CLI & Hook entrypoint
+│   ├── types.ts        # Type definitions & interfaces
+│   ├── detector.ts     # Cross-platform process/port discovery
+│   ├── client.ts       # Language Server RPC client
+│   └── formatter.ts    # Markdown HUD & CLI table formatters
+└── README.md           # Documentation
 ```
 
 ---
 
-## 🔧 開発とビルド
+## 🔧 Development & Building
 
 ```bash
-# 依存パッケージのインストール
+# Install development dependencies
 npm install
 
-# TypeScript 型チェック
+# Run TypeScript type check
 npm run typecheck
 
-# バンドル (bin/agq.cjs 生成)
+# Build bundle (generates bin/agq.cjs)
 npm run build
 ```
 
 ---
 
-## 📄 ライセンス
+## 📄 License
 
 MIT License

@@ -3,20 +3,19 @@ name: prepare-release
 description: Prepare a release for agq-hud. Checks main CI, analyzes commits/diffs since the previous tag to write release notes, updates package.json, plugin.json, src/index.ts, bin/agq.cjs, CHANGELOG.md, and README.md, creates a GitHub Draft Release, and opens a release PR.
 ---
 
-# リリース準備スキル (`prepare-release`)
+# Release Preparation Skill (`prepare-release`)
 
-ユーザーから「リリースして」「リリース準備をして」「vX.Y.Z をリリースしたい」等の指示を受けた際に実行する手順です。
-前回リリースタグからのコミット履歴およびコード差分を解析して高品質なリリースノートを生成し、[`CHANGELOG.md`](../../../CHANGELOG.md) と GitHub Draft Release の両方に反映します。
-また、Antigravity プラグインの仕様に合わせ、[`plugin.json`](../../../plugin.json) やバンドル済み実行ファイル [`bin/agq.cjs`](../../../bin/agq.cjs) も確実に更新します。
+Execute this procedure when instructed by the user to "prepare a release", "release vX.Y.Z", etc.
+This skill analyzes git commit history and code diffs since the previous release tag to generate high-quality release notes, updates both [`CHANGELOG.md`](../../../CHANGELOG.md) and the GitHub Draft Release, and keeps [`plugin.json`](../../../plugin.json) and the bundled standalone binary [`bin/agq.cjs`](../../../bin/agq.cjs) synchronized.
 
 ---
 
-## 📋 実行手順
+## 📋 Execution Steps
 
-### 1. リリース前の状態確認 & 差分解析・バージョン決定
+### 1. Pre-Release Verification, Diff Analysis, and Version Determination
 
-1. **`main` ブランチの最新化と CI 成功を確認**:
-   ベースとなる `main` ブランチを最新化し、最新コミットに対する GitHub Actions (CI) が成功していることを確認します。
+1. **Verify `main` Branch and Ensure CI Passes**:
+   Update the base `main` branch and verify that GitHub Actions (CI) succeeded on the latest commit.
 
    ```powershell
    git switch main
@@ -24,10 +23,10 @@ description: Prepare a release for agq-hud. Checks main CI, analyzes commits/dif
    gh run list --branch main --workflow "CI" --limit 1
    ```
 
-   - ステータスが `completed / success` であることを確認します（ワークフローが存在しない初回等はスキップ可能）。
+   - Ensure status is `completed / success` (can be skipped for initial releases if no previous workflow runs exist).
 
-2. **前回リリースタグからの差分解析**:
-   直前のリリースタグを取得し、`HEAD` までのコミット一覧および変更差分を確認します。
+2. **Analyze Diffs Since Previous Tag**:
+   Fetch the previous release tag and inspect the commit list and code diffs up to `HEAD`.
 
    ```powershell
    $prevTag = git describe --tags --abbrev=0
@@ -35,11 +34,11 @@ description: Prepare a release for agq-hud. Checks main CI, analyzes commits/dif
    git diff --stat "$prevTag..HEAD"
    ```
 
-3. **バージョン情報の決定**:
-   - ユーザーからバージョン（例: `0.1.0`）が指定された場合はそのバージョンを使用します。
-   - 指定がない場合は、`prevTag` からの変更規模（`feat:` 等の新機能があればマイナー更新、`fix:` / `docs:` / `chore:` のみならパッチ更新）に基づいて決定します。
+3. **Determine the Version**:
+   - If the user specifies a version (e.g. `0.1.0`), use it.
+   - Otherwise, determine based on semantic versioning rules (minor bump if `feat:` exists, patch bump for `fix:` / `docs:` / `chore:`).
 
-4. **トピックブランチの作成**:
+4. **Create a Topic Branch**:
 
    ```powershell
    git switch -c chore/release-vX.Y.Z
@@ -47,33 +46,33 @@ description: Prepare a release for agq-hud. Checks main CI, analyzes commits/dif
 
 ---
 
-### 2. リリースノート作成・バージョン更新・ビルド・Draft Release 作成
+### 2. Generate Release Notes, Bump Versions, Build, and Create Draft Release
 
-1. **リリースノート本文の作成**:
-   - コミット履歴とコード差分から **「何が追加・改善・修正されたのか」が利用者・開発者に一目で伝わる要約** をカテゴリ別（`### 🚀 新機能 / Features`、`### 🐛 バグ修正・改善 / Bug Fixes & Improvements`、`### 📖 ドキュメント・開発基盤 / Documentation & DX` 等）に作成します。
-   - リリース作業自体のコミットはリリースノートに含めません。
+1. **Draft Release Notes**:
+   - Organize notes into clear categories (`### 🚀 Features`, `### 🐛 Bug Fixes & Improvements`, `### 📖 Documentation & Maintenance`, etc.) based on the commits and diffs.
+   - Exclude release-preparation commits themselves from the release notes.
 
-2. **各ファイルのバージョン更新**:
-   - [`package.json`](../../../package.json) の `version` を更新（例: `"0.1.0"`）
-   - [`plugin.json`](../../../plugin.json) の `version` を更新（例: `"0.1.0"`）
-   - [`src/index.ts`](../../../src/index.ts) の `VERSION` 定数を更新（例: `const VERSION = '0.1.0';`）
+2. **Update Version Numbers**:
+   - Update `version` in [`package.json`](../../../package.json) (e.g. `"0.1.0"`).
+   - Update `version` in [`plugin.json`](../../../plugin.json) (e.g. `"0.1.0"`).
+   - Update `VERSION` constant in [`src/index.ts`](../../../src/index.ts) (e.g. `const VERSION = '0.1.0';`).
 
-3. **`CHANGELOG.md` の更新**:
-   - [`CHANGELOG.md`](../../../CHANGELOG.md) の既存バージョンの一番上（`---` の直後）に `## [vX.Y.Z] - YYYY-MM-DD` セクションを追加してリリースノートを追記します。
+3. **Update `CHANGELOG.md`**:
+   - Add a new `## [vX.Y.Z] - YYYY-MM-DD` section directly below the header separator (`---`) in [`CHANGELOG.md`](../../../CHANGELOG.md).
 
-4. **ビルド & 型チェック実行**:
-   - プラグイン配布用単一ファイル [`bin/agq.cjs`](../../../bin/agq.cjs) を最新コードでリビルドします。
+4. **Run Build & Typecheck**:
+   - Rebuild the single-file distribution bundle [`bin/agq.cjs`](../../../bin/agq.cjs).
 
    ```powershell
    npm run typecheck
    npm run build
    ```
 
-5. **`README.md` の点検（新機能や重要仕様変更がある場合）**:
-   - 新機能や CLI オプション追加がある場合は、[`README.md`](../../../README.md) の機能説明や使用例セクションも更新します。
+5. **Review `README.md`**:
+   - If new features or CLI options were introduced, update documentation sections in [`README.md`](../../../README.md) and [`README.ja.md`](../../../README.ja.md).
 
-6. **GitHub Draft Release の作成（または更新）**:
-   - `CHANGELOG.md` の今回分リリースノート本文を `scratch/release_notes.md` に書き出し、既存のドラフトがあれば削除した上で新規作成します。
+6. **Create or Update GitHub Draft Release**:
+   - Write the current release notes to `scratch/release_notes.md`, remove any stale draft release, and create a fresh one.
 
    ```powershell
    $draftIds = gh api repos/:owner/:repo/releases --jq '.[] | select(.draft == true) | .id'
@@ -84,37 +83,37 @@ description: Prepare a release for agq-hud. Checks main CI, analyzes commits/dif
    Remove-Item "scratch/release_notes.md" -Force
    ```
 
-7. **コミットの作成**:
+7. **Commit Changes**:
 
    ```powershell
-   git add package.json plugin.json src/index.ts bin/agq.cjs CHANGELOG.md README.md
-   git commit -m "chore: リリース vX.Y.Z に向けたバージョン・CHANGELOG更新"
+   git add package.json plugin.json src/index.ts bin/agq.cjs CHANGELOG.md README.md README.ja.md
+   git commit -m "chore: bump version and update CHANGELOG for release vX.Y.Z"
    ```
 
 ---
 
-### 3. Pull Request の作成
+### 3. Create Pull Request
 
-1. **ブランチをリモートへ push**:
+1. **Push Branch to Remote**:
 
    ```powershell
    git push -u origin chore/release-vX.Y.Z
    ```
 
-2. **GitHub CLI で PR を作成 (`--body-file` 必須)**:
-   - `scratch/pr_body.md` にリリースノートと確認事項を記載して PR を作成します。
+2. **Open PR with GitHub CLI (`--body-file` is mandatory)**:
+   - Write PR summary and release notes into `scratch/pr_body.md` and create the PR.
 
    ```powershell
-   gh pr create --title "chore: リリース vX.Y.Z" --body-file "scratch/pr_body.md" --base main
+   gh pr create --title "chore: release vX.Y.Z" --body-file "scratch/pr_body.md" --base main
    Remove-Item "scratch/pr_body.md" -Force
    gh pr checks --watch
    ```
 
-3. **ユーザーへの報告 & レビュー依頼**:
-   - PR URL を案内し、`CHANGELOG.md` の確認および `main` へのマージを依頼します。
+3. **Notify User & Request Review**:
+   - Share the PR URL with the user and request review of `CHANGELOG.md` and merge into `main`.
 
 ---
 
-## ⏩ 次のステップ案内
+## ⏩ Next Step
 
-PR がマージされたら、タグ付けと本番公開を行う [`publish-release`](../publish-release/SKILL.md) スキルを実行することをユーザーに案内してください。
+Once the user merges the PR, guide them to execute the [`publish-release`](../publish-release/SKILL.md) skill to tag and publish the release.
