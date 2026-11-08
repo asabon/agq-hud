@@ -406,25 +406,70 @@ function getStatusBadge(percentage) {
   }
   return { emoji: "\u{1F7E2}", text: "Good", colorCode: "\x1B[32m" };
 }
-function formatHookMarkdown(summary, currentModelName) {
+function findMatchingGroup(groups, currentModelName) {
+  if (!currentModelName) return void 0;
+  const raw = currentModelName.trim().toLowerCase();
+  if (!raw || raw === "inherit") return void 0;
+  const normalize = (s) => s.toLowerCase().replace(/[-_.]/g, " ").replace(/\s+/g, " ").trim();
+  const normalizedRaw = normalize(raw);
+  for (const group of groups) {
+    for (const m of group.models) {
+      const normLabel = normalize(m.label);
+      const normId = normalize(m.modelId);
+      if (normLabel === normalizedRaw || normId === normalizedRaw || normLabel.includes(normalizedRaw) || normalizedRaw.includes(normLabel) || normId.includes(normalizedRaw) || normalizedRaw.includes(normId)) {
+        return group;
+      }
+    }
+  }
+  for (const group of groups) {
+    const normFamily = normalize(group.family);
+    if (normFamily === normalizedRaw || normFamily.includes(normalizedRaw) || normalizedRaw.includes(normFamily)) {
+      return group;
+    }
+  }
+  const tokens = normalizedRaw.split(" ").filter((t) => t.length > 2);
+  for (const group of groups) {
+    const normFamily = normalize(group.family);
+    if (tokens.some((token) => normFamily.includes(token))) {
+      return group;
+    }
+  }
+  return void 0;
+}
+function formatCompactHookMarkdown(group, userTierName) {
+  const badge = getStatusBadge(group.remainingPercentage);
+  const bar = makeProgressBar(group.remainingPercentage, 10);
+  const resetStr = formatTimeRemaining(group.timeUntilResetMs);
+  const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
+  const tier = userTierName ? ` &nbsp;\xB7&nbsp; \`${userTierName}\`` : "";
+  return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; ${pctDisplay} ${badge.emoji} \`${bar}\` &nbsp;\xB7&nbsp; Reset: **${resetStr}**${tier}`;
+}
+function formatHookMarkdown(summary, currentModelName, options) {
+  const forceAll = options?.forceAll ?? process.env.AGQ_SHOW_ALL === "1";
+  const preferTable = options?.format === "table" || process.env.AGQ_HUD_FORMAT === "table";
+  const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : void 0;
+  if (matchedGroup && !preferTable) {
+    return formatCompactHookMarkdown(matchedGroup, summary.userTierName);
+  }
+  const targetGroups = matchedGroup ? [matchedGroup] : summary.groups;
   const tier = summary.userTierName || "Standard";
   const lines = [];
   lines.push(`> \u{1F4CA} **AI Model Quota** &nbsp;\xB7&nbsp; \`${tier}\``);
   lines.push(`> `);
   lines.push(`> | Model | Remaining | Bar | Reset In |`);
   lines.push(`> | :--- | :--- | :--- | :--- |`);
-  for (const group of summary.groups) {
-    const isCurrent = currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
+  for (const group of targetGroups) {
+    const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
     const badge = getStatusBadge(group.remainingPercentage);
     const bar = makeProgressBar(group.remainingPercentage, 10);
     const resetStr = formatTimeRemaining(group.timeUntilResetMs);
-    const nameDisplay = isCurrent ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
+    const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
     const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
     lines.push(`> | ${nameDisplay} | ${pctDisplay} ${badge.emoji} | \`${bar}\` | ${resetStr} |`);
   }
   return lines.join("\n");
 }
-function formatCliTable(summary, verbose = false, isTty = true) {
+function formatCliTable(summary, verbose = false, isTty = true, filter) {
   const resetCode = isTty ? "\x1B[0m" : "";
   const boldCode = isTty ? "\x1B[1m" : "";
   const dimCode = isTty ? "\x1B[2m" : "";
@@ -433,7 +478,7 @@ function formatCliTable(summary, verbose = false, isTty = true) {
   out.push(`${boldCode}\u26A1 AGQ HUD \u2014 Model Quota Monitor${resetCode}`);
   out.push(`${dimCode}Tier: ${resetCode}${boldCode}${summary.userTierName || "Standard"}${resetCode}${summary.userEmail ? ` ${dimCode}(${summary.userEmail})${resetCode}` : ""}`);
   out.push("");
-  const targetList = verbose ? summary.allModels.map((m) => ({
+  let targetList = verbose ? summary.allModels.map((m) => ({
     name: m.label,
     percentage: m.remainingPercentage,
     resetMs: m.timeUntilResetMs
@@ -442,6 +487,15 @@ function formatCliTable(summary, verbose = false, isTty = true) {
     percentage: g.remainingPercentage,
     resetMs: g.timeUntilResetMs
   }));
+  if (filter) {
+    const f = filter.toLowerCase().trim();
+    targetList = targetList.filter((item) => item.name.toLowerCase().includes(f));
+    if (targetList.length === 0) {
+      out.push(`${dimCode}No models matched filter: "${filter}"${resetCode}`);
+      out.push("");
+      return out.join("\n");
+    }
+  }
   const maxNameLen = Math.max(16, ...targetList.map((item) => item.name.length));
   const colName = maxNameLen + 2;
   const colPct = 10;
@@ -466,7 +520,7 @@ function formatCliTable(summary, verbose = false, isTty = true) {
     out.push(` ${nameCol}${pctCol}${barCol}${resetCol}`);
   }
   out.push(sep);
-  if (!verbose && summary.allModels.length > summary.groups.length) {
+  if (!verbose && !filter && summary.allModels.length > summary.groups.length) {
     out.push(`${dimCode}Tip: Run with -v or --verbose to view all model sub-variants.${resetCode}`);
   }
   out.push("");
@@ -498,7 +552,7 @@ async function readStdin() {
     });
   });
 }
-async function handleHookMode() {
+async function handleHookMode(flags) {
   try {
     const rawInput = await readStdin();
     let hookInput = {};
@@ -515,7 +569,9 @@ async function handleHookMode() {
     }
     const statusData = await fetchUserStatus(conn, 2500);
     const summary = parseQuotaSummary(statusData);
-    const markdown = formatHookMarkdown(summary, hookInput.modelName);
+    const markdown = formatHookMarkdown(summary, hookInput.modelName, {
+      forceAll: flags.showAll
+    });
     const output = {
       injectSteps: [
         {
@@ -549,7 +605,7 @@ async function handleCliMode(flags) {
       return;
     }
     const isTty = process.stdout.isTTY ?? true;
-    const table = formatCliTable(summary, flags.verbose, isTty);
+    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter);
     console.log(table);
   } catch (err) {
     console.error(`\u274C Error fetching quota: ${err.message}`);
@@ -562,11 +618,15 @@ function printHelp() {
 agq-hud - Antigravity AI Model Quota HUD & CLI (v${VERSION})
 
 USAGE:
-  agq [OPTIONS]
-  agq-hud [OPTIONS]
+  agq [OPTIONS] [FILTER]
+  agq-hud [OPTIONS] [FILTER]
+
+ARGUMENTS:
+  [FILTER]       Filter models by name or family (e.g., 'flash', 'claude')
 
 OPTIONS:
   --hook         Run in Lifecycle Hook mode (PreInvocation JSON contract)
+  --all          Display all models in HUD (disables active model filter)
   -v, --verbose  Display all model sub-variants and detailed breakdown
   --json         Output quota summary in raw JSON format
   -V, --version  Show version number
@@ -574,6 +634,7 @@ OPTIONS:
 
 EXAMPLES:
   agq            Show concise quota summary table in terminal
+  agq flash      Show quota for models matching 'flash'
   agq -v         Show detailed quota table with all variants
   agq --json     Get machine-readable quota data
 `);
@@ -588,13 +649,15 @@ async function main() {
     printHelp();
     return;
   }
+  const showAll = args.includes("--all") || args.includes("-a");
   if (args.includes("--hook")) {
-    await handleHookMode();
+    await handleHookMode({ showAll });
     return;
   }
   const verbose = args.includes("-v") || args.includes("--verbose");
   const json = args.includes("--json");
-  await handleCliMode({ verbose, json });
+  const filter = args.find((arg) => !arg.startsWith("-"));
+  await handleCliMode({ verbose, json, filter });
 }
 main().catch((err) => {
   console.error(err);

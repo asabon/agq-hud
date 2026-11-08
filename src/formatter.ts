@@ -44,9 +44,91 @@ function getStatusBadge(percentage: number): { emoji: string; text: string; colo
 }
 
 /**
+ * Finds matching model group for a given model name/identifier
+ */
+export function findMatchingGroup(
+  groups: ModelGroupQuota[],
+  currentModelName?: string
+): ModelGroupQuota | undefined {
+  if (!currentModelName) return undefined;
+
+  const raw = currentModelName.trim().toLowerCase();
+  if (!raw || raw === 'inherit') return undefined;
+
+  const normalize = (s: string) => s.toLowerCase().replace(/[-_.]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normalizedRaw = normalize(raw);
+
+  // 1. Direct label or modelId match
+  for (const group of groups) {
+    for (const m of group.models) {
+      const normLabel = normalize(m.label);
+      const normId = normalize(m.modelId);
+      if (
+        normLabel === normalizedRaw ||
+        normId === normalizedRaw ||
+        normLabel.includes(normalizedRaw) ||
+        normalizedRaw.includes(normLabel) ||
+        normId.includes(normalizedRaw) ||
+        normalizedRaw.includes(normId)
+      ) {
+        return group;
+      }
+    }
+  }
+
+  // 2. Family match
+  for (const group of groups) {
+    const normFamily = normalize(group.family);
+    if (normFamily === normalizedRaw || normFamily.includes(normalizedRaw) || normalizedRaw.includes(normFamily)) {
+      return group;
+    }
+  }
+
+  // 3. Keyword/token-based fuzzy match (e.g. "flash", "opus", "sonnet", "argon")
+  const tokens = normalizedRaw.split(' ').filter((t) => t.length > 2);
+  for (const group of groups) {
+    const normFamily = normalize(group.family);
+    if (tokens.some((token) => normFamily.includes(token))) {
+      return group;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Formats a single model group as a concise one-line banner HUD
+ */
+export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?: string): string {
+  const badge = getStatusBadge(group.remainingPercentage);
+  const bar = makeProgressBar(group.remainingPercentage, 10);
+  const resetStr = formatTimeRemaining(group.timeUntilResetMs);
+  const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
+  const tier = userTierName ? ` &nbsp;·&nbsp; \`${userTierName}\`` : '';
+
+  return `> 📊 **${group.family}** &nbsp;·&nbsp; ${pctDisplay} ${badge.emoji} \`${bar}\` &nbsp;·&nbsp; Reset: **${resetStr}**${tier}`;
+}
+
+/**
  * Formats Markdown HUD for Antigravity Chat UI (metadata.user_markdown)
  */
-export function formatHookMarkdown(summary: QuotaSummary, currentModelName?: string): string {
+export function formatHookMarkdown(
+  summary: QuotaSummary,
+  currentModelName?: string,
+  options?: { forceAll?: boolean; format?: 'compact' | 'table' }
+): string {
+  const forceAll = options?.forceAll ?? (process.env.AGQ_SHOW_ALL === '1');
+  const preferTable = options?.format === 'table' || process.env.AGQ_HUD_FORMAT === 'table';
+
+  const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : undefined;
+
+  // When a single model is selected, display concise 1-line banner (unless table format is explicitly requested)
+  if (matchedGroup && !preferTable) {
+    return formatCompactHookMarkdown(matchedGroup, summary.userTierName);
+  }
+
+  // Otherwise, render table format
+  const targetGroups = matchedGroup ? [matchedGroup] : summary.groups;
   const tier = summary.userTierName || 'Standard';
   const lines: string[] = [];
 
@@ -55,17 +137,18 @@ export function formatHookMarkdown(summary: QuotaSummary, currentModelName?: str
   lines.push(`> | Model | Remaining | Bar | Reset In |`);
   lines.push(`> | :--- | :--- | :--- | :--- |`);
 
-  for (const group of summary.groups) {
-    const isCurrent =
-      currentModelName &&
-      (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) ||
-        currentModelName.toLowerCase().includes(group.family.toLowerCase()));
+  for (const group of targetGroups) {
+    const isCurrent = matchedGroup
+      ? true
+      : currentModelName &&
+        (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) ||
+          currentModelName.toLowerCase().includes(group.family.toLowerCase()));
 
     const badge = getStatusBadge(group.remainingPercentage);
     const bar = makeProgressBar(group.remainingPercentage, 10);
     const resetStr = formatTimeRemaining(group.timeUntilResetMs);
 
-    const nameDisplay = isCurrent ? `**${group.family}** 🎯` : `**${group.family}**`;
+    const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** 🎯` : `**${group.family}**`;
     const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
 
     lines.push(`> | ${nameDisplay} | ${pctDisplay} ${badge.emoji} | \`${bar}\` | ${resetStr} |`);
@@ -77,7 +160,12 @@ export function formatHookMarkdown(summary: QuotaSummary, currentModelName?: str
 /**
  * Formats CLI Terminal Table
  */
-export function formatCliTable(summary: QuotaSummary, verbose = false, isTty = true): string {
+export function formatCliTable(
+  summary: QuotaSummary,
+  verbose = false,
+  isTty = true,
+  filter?: string
+): string {
   const resetCode = isTty ? '\x1b[0m' : '';
   const boldCode = isTty ? '\x1b[1m' : '';
   const dimCode = isTty ? '\x1b[2m' : '';
@@ -90,7 +178,7 @@ export function formatCliTable(summary: QuotaSummary, verbose = false, isTty = t
   }`);
   out.push('');
 
-  const targetList = verbose
+  let targetList = verbose
     ? summary.allModels.map((m) => ({
         name: m.label,
         percentage: m.remainingPercentage,
@@ -101,6 +189,16 @@ export function formatCliTable(summary: QuotaSummary, verbose = false, isTty = t
         percentage: g.remainingPercentage,
         resetMs: g.timeUntilResetMs,
       }));
+
+  if (filter) {
+    const f = filter.toLowerCase().trim();
+    targetList = targetList.filter((item) => item.name.toLowerCase().includes(f));
+    if (targetList.length === 0) {
+      out.push(`${dimCode}No models matched filter: "${filter}"${resetCode}`);
+      out.push('');
+      return out.join('\n');
+    }
+  }
 
   // Column widths
   const maxNameLen = Math.max(16, ...targetList.map((item) => item.name.length));
@@ -133,7 +231,7 @@ export function formatCliTable(summary: QuotaSummary, verbose = false, isTty = t
   }
 
   out.push(sep);
-  if (!verbose && summary.allModels.length > summary.groups.length) {
+  if (!verbose && !filter && summary.allModels.length > summary.groups.length) {
     out.push(`${dimCode}Tip: Run with -v or --verbose to view all model sub-variants.${resetCode}`);
   }
   out.push('');
