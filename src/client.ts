@@ -11,7 +11,7 @@ import {
 
 export function fetchUserStatus(conn: ConnectionInfo, timeoutMs = 3000): Promise<GetUserStatusResponse> {
   return new Promise((resolve, reject) => {
-    let host = 'localhost';
+    let host: string;
     let port = 80;
 
     if (conn.address.includes(':')) {
@@ -19,7 +19,7 @@ export function fetchUserStatus(conn: ConnectionInfo, timeoutMs = 3000): Promise
       host = parts[0] || 'localhost';
       port = Number(parts[1]) || 80;
     } else {
-      host = conn.address;
+      host = conn.address || 'localhost';
     }
 
     const postData = '{}';
@@ -74,7 +74,7 @@ export function fetchUserQuotaSummary(
   timeoutMs = 3000
 ): Promise<ServerUserQuotaSummaryResponse | undefined> {
   return new Promise((resolve) => {
-    let host = 'localhost';
+    let host: string;
     let port = 80;
 
     if (conn.address.includes(':')) {
@@ -82,7 +82,7 @@ export function fetchUserQuotaSummary(
       host = parts[0] || 'localhost';
       port = Number(parts[1]) || 80;
     } else {
-      host = conn.address;
+      host = conn.address || 'localhost';
     }
 
     const postData = JSON.stringify({

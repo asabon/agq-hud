@@ -39,14 +39,14 @@ module.exports = __toCommonJS(index_exports);
 var import_http = __toESM(require("http"));
 function fetchUserStatus(conn, timeoutMs = 3e3) {
   return new Promise((resolve, reject) => {
-    let host = "localhost";
+    let host;
     let port = 80;
     if (conn.address.includes(":")) {
       const parts = conn.address.split(":");
       host = parts[0] || "localhost";
       port = Number(parts[1]) || 80;
     } else {
-      host = conn.address;
+      host = conn.address || "localhost";
     }
     const postData = "{}";
     const req = import_http.default.request(
@@ -93,14 +93,14 @@ function fetchUserStatus(conn, timeoutMs = 3e3) {
 }
 function fetchUserQuotaSummary(conn, timeoutMs = 3e3) {
   return new Promise((resolve) => {
-    let host = "localhost";
+    let host;
     let port = 80;
     if (conn.address.includes(":")) {
       const parts = conn.address.split(":");
       host = parts[0] || "localhost";
       port = Number(parts[1]) || 80;
     } else {
-      host = conn.address;
+      host = conn.address || "localhost";
     }
     const postData = JSON.stringify({
       metadata: {

@@ -1,4 +1,4 @@
-import { ModelGroupQuota, NormalizedModelQuota, QuotaSummary } from './types.js';
+import { ModelGroupQuota, QuotaSummary } from './types.js';
 
 export function formatTimeRemaining(ms?: number): string {
   if (ms === undefined || isNaN(ms)) return 'Unknown';

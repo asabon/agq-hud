@@ -11,6 +11,7 @@
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=bin/agq.cjs --format=cjs --banner:js=\"#!/usr/bin/env node\"",
     "build:test": "esbuild test/*.test.ts --bundle --platform=node --format=cjs --outdir=dist/test",
     "test": "npm run build:test && node test/run.cjs",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -26,8 +27,11 @@
   "author": "Antigravity Community",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.1",
     "esbuild": "^0.24.0",
-    "typescript": "^5.7.2"
+    "eslint": "^10.14.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.72.1"
   }
 }
