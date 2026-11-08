@@ -1,0 +1,12 @@
+{
+  "name": "agq-hud",
+  "displayName": "AGQ HUD — Model Quota Monitor",
+  "description": "Real-time AI model quota monitor and inline chat HUD for Antigravity 2.0, CLI, and IDE.",
+  "version": "0.0.1",
+  "author": "Antigravity Community",
+  "suggestedPrompts": [
+    "Check current AI model quota",
+    "Show quota usage details",
+    "When will my model quota reset?"
+  ]
+}

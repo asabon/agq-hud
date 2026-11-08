@@ -1,0 +1,31 @@
+{
+  "name": "agq-hud",
+  "version": "0.0.1",
+  "description": "Real-time AI model quota monitor and inline chat HUD for Antigravity 2.0, CLI, and IDE",
+  "main": "bin/agq.cjs",
+  "bin": {
+    "agq": "bin/agq.cjs",
+    "agq-hud": "bin/agq.cjs"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=bin/agq.cjs --format=cjs --banner:js=\"#!/usr/bin/env node\"",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "antigravity",
+    "antigravity-plugin",
+    "quota",
+    "gemini",
+    "claude",
+    "lifecycle-hook",
+    "cli"
+  ],
+  "author": "Antigravity Community",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2"
+  }
+}

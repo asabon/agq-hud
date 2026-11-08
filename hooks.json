@@ -1,0 +1,11 @@
+{
+  "agq-hud": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node bin/agq.cjs --hook",
+        "timeout": 5
+      }
+    ]
+  }
+}
