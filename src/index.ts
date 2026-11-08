@@ -1,7 +1,10 @@
 import { fetchFullQuota, parseQuotaSummary } from './client.js';
 import { detectConnection } from './detector.js';
-import { formatCliTable, formatHookMarkdown, formatHookTitle } from './formatter.js';
-import { HookInput, HookPreInvocationOutput } from './types.js';
+import { formatCliTable } from './formatter.js';
+import { buildHookOutput } from './hook.js';
+import { HookInput } from './types.js';
+
+export { buildHookOutput };
 
 /**
  * Reads all data from standard input until EOF.
@@ -40,6 +43,7 @@ async function readStdin(): Promise<string> {
   });
 }
 
+
 /**
  * Handles Antigravity PreInvocation lifecycle hook mode.
  * Reads hook input from stdin, retrieves model quota data,
@@ -68,28 +72,9 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
 
     const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
     const summary = parseQuotaSummary(statusData, quotaSummaryData);
-    const markdown = formatHookMarkdown(summary, hookInput.modelName, {
+    const output = buildHookOutput(summary, hookInput.modelName, {
       forceAll: flags.showAll,
     });
-
-    const title = formatHookTitle(summary, hookInput.modelName, {
-      forceAll: flags.showAll,
-    });
-
-    const output: HookPreInvocationOutput = {
-      injectSteps: [
-        {
-          systemMessage: {
-            systemMessage: markdown,
-            renderInfo: {
-              title,
-              markdown,
-            },
-          },
-        },
-      ],
-      terminationBehavior: '',
-    };
 
     process.stdout.write(JSON.stringify(output) + '\n');
   } catch {
