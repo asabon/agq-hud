@@ -13,8 +13,8 @@ Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-O
 ## ✨ 主な特長
 
 1. **チャット内常時表示 HUD (Hook & Rule モード)**
-   - Antigravity の `PreInvocation` ライフサイクルフックと同梱エージェントルール（`rules/AGENTS.md`）により、アシスタントの返答フッターにリアルタイムクォータ情報を自動付与。
-   - アコーディオンを開く必要がなく、常に一目で残量と次回リセット時間を確認可能。
+   - Antigravity の `PreInvocation` ライフサイクルフックと同梱エージェントルール（`rules/AGENTS.md`）により、**アシスタントの返答フッター（最下部）**にリアルタイムクォータ情報を自動付与。
+   - チャット UI の**折りたたみアコーディオン見出し（`renderInfo.title`）**にも最新の残量とリセット時間を反映。アコーディオンを開く必要がなく、常に一目で残量を確認可能。
    - **5h 制限と 1w 制限のデュアル表示**: `RetrieveUserQuotaSummary` RPC と連携し、直近の 5時間バースト制限（5h）と 1週間制限（Weekly / 1w）の両方を高精度に取得・表示。
    - **超コンパクトな1行表示**: デフォルトでは現在会話で選択中のモデルのみを1行ステータスバナーとして表示し、会話の邪魔になりません。
    - フォールバック & カスタマイズ対応: 選択中のモデルが未検出の場合は自動で全モデルテーブルにフォールバック。`--all` または環境変数 `AGQ_SHOW_ALL=1` で全モデル表示、`AGQ_HUD_FORMAT=table` でテーブル表示にも切り替え可能。
@@ -43,7 +43,9 @@ Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-O
 agy plugin install https://github.com/asabon/agq-hud
 ```
 
-または、ローカルのプラグインディレクトリに配置するだけで即座に自動認識されます。
+### 2. 手動インストール
+
+プラグインディレクトリに直接クローンするだけで即座に自動認識されます。
 
 ```bash
 # Windows
@@ -53,19 +55,30 @@ git clone https://github.com/asabon/agq-hud.git %USERPROFILE%\.gemini\config\plu
 git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 ```
 
-インストール後、次回の会話ターンから自動的にチャット画面上に Quota HUD が表示されます。
+インストール後、次回の会話ターンから自動的にアシスタント返答フッターおよびチャット画面上に Quota HUD が表示されます。
+
+#### 任意: ターミナルから `agq-hud` コマンドをグローバル実行できるようにする
+
+`node bin/agq.cjs` ではなく `agq-hud` だけで実行したい場合は、リポジトリディレクトリで `npm link` を実行します：
+
+```bash
+cd <agq-hudの配置パス>
+npm link
+```
 
 ---
 
 ## 🚀 使い方
 
-### 1. Hook モード (チャット画面自動表示)
+### 1. Hook & Rule モード (チャット画面自動表示)
 
-プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、会話の邪魔にならないコンパクトなインライン HUD がチャット上部にレンダリングされます：
+プラグインを有効化すると、ユーザーの発言ごとに `hooks.json` の `PreInvocation` フックが自動実行され、同梱エージェントルール（`rules/AGENTS.md`）と連動して以下の2か所に表示されます：
 
-> 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; 5h: `64.5%` 🟢 (3m) &nbsp;·&nbsp; 1w: `75.5%` 🟢 (5d 16h) &nbsp;·&nbsp; `Google AI Pro`
+1. **アシスタント返答フッター**: 会話の末尾にコンパクトなバナーとして常時自動表示されます：
 
-*(※全モデルを一覧表示したい場合は `--all` や環境変数 `AGQ_SHOW_ALL=1` を指定できます。単一モデルでもテーブル形式にしたい場合は `AGQ_HUD_FORMAT=table` を指定できます)*
+   > 📊 **Gemini 3.8 Flash** &nbsp;·&nbsp; 5h: `64.5%` 🟢 (3m) &nbsp;·&nbsp; 1w: `75.5%` 🟢 (5d 16h) &nbsp;·&nbsp; `Google AI Pro`
+
+2. **折りたたみアコーディオン見出し**: チャット UI 上部のシステムメッセージアコーディオンの見出し（`renderInfo.title`）にも現在の残量ステータスが表示されます。
 
 ---
 
@@ -87,9 +100,12 @@ agq-hud -v
 # JSON 形式で出力
 agq-hud --json
 
-# バージョン確認
+# ヘルプ・バージョン確認
+agq-hud --help
 agq-hud --version
 ```
+
+*(※ `npm link` していない場合でも、`node bin/agq.cjs` で同様に実行できます)*
 
 #### CLI 出力例:
 
@@ -111,6 +127,17 @@ Tip: Run with -v or --verbose to view all model sub-variants.
 
 ---
 
+### 3. 設定 & 環境変数
+
+環境変数やコマンドラインオプションで HUD の表示形式をカスタマイズできます：
+
+| 環境変数 | 設定値 | 説明 |
+| :--- | :--- | :--- |
+| `AGQ_SHOW_ALL` | `1`, `true` | 全モデルのテーブル一覧を HUD に表示（アクティブモデル絞り込みを無効化）。`--all` と同等。 |
+| `AGQ_HUD_FORMAT` | `table`, `compact` | 単一モデル検出時でもテーブル形式で表示を強制（デフォルト: `compact`）。 |
+
+---
+
 ## 🛠️ プロジェクト構成
 
 ```text
@@ -119,20 +146,28 @@ agq-hud/
 ├── hooks.json          # PreInvocation ライフサイクルフック定義
 ├── package.json        # ビルドスクリプト & 依存関係設定
 ├── tsconfig.json       # TypeScript コンパイラ設定
+├── eslint.config.mjs   # ESLint コード品質ルール設定
+├── rules/
+│   └── AGENTS.md       # アシスタント返答フッター表示用エージェントルール
 ├── bin/
 │   └── agq.cjs         # バンドル済み単一実行ファイル（配布用）
 ├── src/
 │   ├── index.ts        # CLI / Hook エントリポイント
+│   ├── hook.ts         # PreInvocation フック出力ビルダー
 │   ├── types.ts        # データ型・インターフェース定義
 │   ├── detector.ts     # マルチプラットフォーム プロセス/ポート自動探索
 │   ├── client.ts       # Language Server RPC クライアント
 │   └── formatter.ts    # Markdown HUD & CLI テーブルフォーマッタ
-└── README.md           # 本ドキュメント
+├── test/
+│   ├── hook-contract.test.ts # Antigravity 規約検証テスト
+│   ├── formatter.test.ts     # フォーマット・計算ロジック単体テスト
+│   └── run.cjs               # テストランナー
+└── README.md           # ドキュメント（英語）
 ```
 
 ---
 
-## 🔧 開発とビルド
+## 🔧 開発とテスト
 
 ```bash
 # 依存パッケージのインストール
@@ -140,6 +175,12 @@ npm install
 
 # TypeScript 型チェック
 npm run typecheck
+
+# ESLint による構文・規約チェック
+npm run lint
+
+# 単体テスト & 規約検証テスト
+npm test
 
 # バンドル (bin/agq.cjs 生成)
 npm run build
