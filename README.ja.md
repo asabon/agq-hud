@@ -19,9 +19,9 @@ Antigravity 2.0 / CLI / IDE 向けに、各 AI モデル（Gemini, Claude, GPT-O
    - **超コンパクトな1行表示**: デフォルトでは現在会話で選択中のモデルのみを1行ステータスバナーとして表示し、会話の邪魔になりません。
    - フォールバック & カスタマイズ対応: 選択中のモデルが未検出の場合は自動で全モデルテーブルにフォールバック。`--all` または環境変数 `AGQ_SHOW_ALL=1` で全モデル表示、`AGQ_HUD_FORMAT=table` でテーブル表示にも切り替え可能。
 
-2. **ターミナルから手軽に確認できる CLI モード (`agq` / `agq-hud`)**
-   - いつでもターミナルから `agq` と叩くだけで、各モデルの 5時間制限 / 週間制限と次回リセットまでのカウントダウンをテーブル表示。
-   - `agq [フィルター]`: モデル名やファミリー名で絞り込み表示（例: `agq flash`, `agq claude`）。
+2. **ターミナルから手軽に確認できる CLI モード (`agq-hud`)**
+   - いつでもターミナルから `agq-hud` と叩くだけで、各モデルの 5時間制限 / 週間制限と次回リセットまでのカウントダウンをテーブル表示。
+   - `agq-hud [フィルター]`: モデル名やファミリー名で絞り込み表示（例: `agq-hud flash`, `agq-hud claude`）。
    - `-v` / `--verbose` で低・中・高バリアント（Low / Medium / High）の詳細一覧を表示。
    - `--json` で外部スクリプト連携用の JSON 出力に対応。
 
@@ -69,26 +69,26 @@ git clone https://github.com/asabon/agq-hud.git ~/.gemini/config/plugins/agq-hud
 
 ---
 
-### 2. CLI モード (`agq` / `agq-hud`)
+### 2. CLI モード (`agq-hud`)
 
 ターミナルや PowerShell から直接実行できます：
 
 ```bash
 # 全モデルのサマリー表示
-agq
+agq-hud
 
 # モデル名やファミリー名で絞り込み
-agq flash
-agq claude
+agq-hud flash
+agq-hud claude
 
 # 詳細一覧（Low / Medium / High 全モデル）
-agq -v
+agq-hud -v
 
 # JSON 形式で出力
-agq --json
+agq-hud --json
 
 # バージョン確認
-agq --version
+agq-hud --version
 ```
 
 #### CLI 出力例:

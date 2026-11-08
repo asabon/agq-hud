@@ -19,9 +19,9 @@ A lightweight Antigravity plugin and standalone CLI tool that displays real-time
    - **Ultra-compact single-line HUD**: By default, displays only the currently active conversation model as an unobtrusive single-line status banner.
    - Fallback / customizable: Automatically falls back to full table view if the active model cannot be detected, or when `--all` / `AGQ_SHOW_ALL=1` is configured.
 
-2. **Standalone Terminal CLI (`agq` / `agq-hud`)**
-   - Run `agq` from any terminal or PowerShell window to view 5-hour and weekly quota gauges and reset timers.
-   - `agq [filter]`: Filter quota display by model name or family (e.g. `agq flash`, `agq claude`).
+2. **Standalone Terminal CLI (`agq-hud`)**
+   - Run `agq-hud` from any terminal or PowerShell window to view 5-hour and weekly quota gauges and reset timers.
+   - `agq-hud [filter]`: Filter quota display by model name or family (e.g. `agq-hud flash`, `agq-hud claude`).
    - `-v` / `--verbose`: Displays detailed breakdown of all sub-variants (Low, Medium, High).
    - `--json`: Outputs machine-readable JSON for custom status bars, prompt integrations, or scripts.
 
@@ -71,26 +71,26 @@ When enabled, the `PreInvocation` hook defined in `hooks.json` triggers before e
 
 ---
 
-### 2. CLI Mode (`agq` / `agq-hud`)
+### 2. CLI Mode (`agq-hud`)
 
 Inspect quotas anytime directly from your terminal:
 
 ```bash
 # Show summary table for all models
-agq
+agq-hud
 
 # Filter by model name or family
-agq flash
-agq claude
+agq-hud flash
+agq-hud claude
 
 # Show detailed breakdown for all model tiers/variants
-agq -v
+agq-hud -v
 
 # Output raw JSON
-agq --json
+agq-hud --json
 
 # Print version
-agq --version
+agq-hud --version
 ```
 
 #### CLI Output Example:

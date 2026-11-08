@@ -121,7 +121,6 @@ function printHelp(): void {
 agq-hud - Antigravity AI Model Quota HUD & CLI (v${VERSION})
 
 USAGE:
-  agq [OPTIONS] [FILTER]
   agq-hud [OPTIONS] [FILTER]
 
 ARGUMENTS:
@@ -136,15 +135,15 @@ OPTIONS:
   -h, --help     Show this help message
 
 EXAMPLES:
-  agq            Show concise quota summary table in terminal
-  agq flash      Show quota for models matching 'flash'
-  agq -v         Show detailed quota table with all variants
-  agq --json     Get machine-readable quota data
+  agq-hud            Show concise quota summary table in terminal
+  agq-hud flash      Show quota for models matching 'flash'
+  agq-hud -v         Show detailed quota table with all variants
+  agq-hud --json     Get machine-readable quota data
 `);
 }
 
 /**
- * Application entry point for agq CLI and lifecycle hook execution.
+ * Application entry point for agq-hud CLI and lifecycle hook execution.
  */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
