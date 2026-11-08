@@ -41,6 +41,43 @@ async function readStdin(): Promise<string> {
 }
 
 /**
+ * Builds the PreInvocation hook output object for Antigravity Language Server.
+ *
+ * @param summary - Parsed quota summary containing model groups and tier information.
+ * @param modelName - Optional current model name to highlight or filter.
+ * @param options - Options controlling whether to show all models.
+ * @returns PreInvocation hook output payload.
+ */
+export function buildHookOutput(
+  summary: ReturnType<typeof parseQuotaSummary>,
+  modelName?: string,
+  options?: { forceAll?: boolean }
+): HookPreInvocationOutput {
+  const markdown = formatHookMarkdown(summary, modelName, {
+    forceAll: options?.forceAll,
+  });
+
+  const title = formatHookTitle(summary, modelName, {
+    forceAll: options?.forceAll,
+  });
+
+  return {
+    injectSteps: [
+      {
+        systemMessage: {
+          systemMessage: markdown,
+          renderInfo: {
+            title,
+            markdown,
+          },
+        },
+      },
+    ],
+    terminationBehavior: '',
+  };
+}
+
+/**
  * Handles Antigravity PreInvocation lifecycle hook mode.
  * Reads hook input from stdin, retrieves model quota data,
  * and outputs HookPreInvocationOutput JSON with systemMessage and renderInfo.
@@ -68,28 +105,9 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
 
     const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
     const summary = parseQuotaSummary(statusData, quotaSummaryData);
-    const markdown = formatHookMarkdown(summary, hookInput.modelName, {
+    const output = buildHookOutput(summary, hookInput.modelName, {
       forceAll: flags.showAll,
     });
-
-    const title = formatHookTitle(summary, hookInput.modelName, {
-      forceAll: flags.showAll,
-    });
-
-    const output: HookPreInvocationOutput = {
-      injectSteps: [
-        {
-          systemMessage: {
-            systemMessage: markdown,
-            renderInfo: {
-              title,
-              markdown,
-            },
-          },
-        },
-      ],
-      terminationBehavior: '',
-    };
 
     process.stdout.write(JSON.stringify(output) + '\n');
   } catch {

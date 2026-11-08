@@ -6,6 +6,10 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -22,6 +26,14 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/index.ts
+var index_exports = {};
+__export(index_exports, {
+  buildHookOutput: () => buildHookOutput
+});
+module.exports = __toCommonJS(index_exports);
 
 // src/client.ts
 var import_http = __toESM(require("http"));
@@ -196,7 +208,7 @@ function parseServerQuotaGroups(quotaSummary, now = /* @__PURE__ */ new Date()) 
       buckets.push(bucketInfo);
       if (window === "5h" || bucketId.includes("5h")) {
         limit5h = bucketInfo;
-      } else if (window === "weekly" || bucketId.includes("weekly")) {
+      } else if (window === "weekly" || window === "1w" || bucketId.includes("weekly") || bucketId.includes("1w")) {
         limitWeekly = bucketInfo;
       }
     }
@@ -797,6 +809,28 @@ async function readStdin() {
     });
   });
 }
+function buildHookOutput(summary, modelName, options) {
+  const markdown = formatHookMarkdown(summary, modelName, {
+    forceAll: options?.forceAll
+  });
+  const title = formatHookTitle(summary, modelName, {
+    forceAll: options?.forceAll
+  });
+  return {
+    injectSteps: [
+      {
+        systemMessage: {
+          systemMessage: markdown,
+          renderInfo: {
+            title,
+            markdown
+          }
+        }
+      }
+    ],
+    terminationBehavior: ""
+  };
+}
 async function handleHookMode(flags) {
   try {
     const rawInput = await readStdin();
@@ -814,26 +848,9 @@ async function handleHookMode(flags) {
     }
     const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
     const summary = parseQuotaSummary(statusData, quotaSummaryData);
-    const markdown = formatHookMarkdown(summary, hookInput.modelName, {
+    const output = buildHookOutput(summary, hookInput.modelName, {
       forceAll: flags.showAll
     });
-    const title = formatHookTitle(summary, hookInput.modelName, {
-      forceAll: flags.showAll
-    });
-    const output = {
-      injectSteps: [
-        {
-          systemMessage: {
-            systemMessage: markdown,
-            renderInfo: {
-              title,
-              markdown
-            }
-          }
-        }
-      ],
-      terminationBehavior: ""
-    };
     process.stdout.write(JSON.stringify(output) + "\n");
   } catch {
     process.stdout.write("{}\n");
@@ -911,4 +928,8 @@ async function main() {
 main().catch((err) => {
   console.error(err);
   process.exit(1);
+});
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  buildHookOutput
 });

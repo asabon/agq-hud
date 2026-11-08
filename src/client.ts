@@ -220,7 +220,7 @@ function parseServerQuotaGroups(
 
       if (window === '5h' || bucketId.includes('5h')) {
         limit5h = bucketInfo;
-      } else if (window === 'weekly' || bucketId.includes('weekly')) {
+      } else if (window === 'weekly' || window === '1w' || bucketId.includes('weekly') || bucketId.includes('1w')) {
         limitWeekly = bucketInfo;
       }
     }
