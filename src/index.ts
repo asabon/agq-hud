@@ -1,8 +1,13 @@
 import { fetchFullQuota, parseQuotaSummary } from './client.js';
 import { detectConnection } from './detector.js';
-import { formatCliTable, formatHookMarkdown } from './formatter.js';
+import { formatCliTable, formatHookMarkdown, formatHookTitle } from './formatter.js';
 import { HookInput, HookPreInvocationOutput } from './types.js';
 
+/**
+ * Reads all data from standard input until EOF.
+ *
+ * @returns Resolves with the collected string data.
+ */
 async function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = '';
@@ -35,6 +40,13 @@ async function readStdin(): Promise<string> {
   });
 }
 
+/**
+ * Handles Antigravity PreInvocation lifecycle hook mode.
+ * Reads hook input from stdin, retrieves model quota data,
+ * and outputs HookPreInvocationOutput JSON with systemMessage and renderInfo.
+ *
+ * @param flags - Command line flags controlling hook display options.
+ */
 async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
   try {
     const rawInput = await readStdin();
@@ -60,17 +72,18 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
       forceAll: flags.showAll,
     });
 
+    const title = formatHookTitle(summary, hookInput.modelName, {
+      forceAll: flags.showAll,
+    });
+
     const output: HookPreInvocationOutput = {
       injectSteps: [
         {
           systemMessage: {
             systemMessage: markdown,
             renderInfo: {
-              title: '⚡ Model Quota HUD',
+              title,
               markdown,
-            },
-            metadata: {
-              user_markdown: markdown,
             },
           },
         },
@@ -85,6 +98,11 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
   }
 }
 
+/**
+ * Handles standalone CLI execution mode, displaying quota tables or JSON output.
+ *
+ * @param flags - CLI flags controlling verbosity, JSON formatting, and model filters.
+ */
 async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: string }): Promise<void> {
   try {
     const conn = await detectConnection();
@@ -140,6 +158,9 @@ EXAMPLES:
 `);
 }
 
+/**
+ * Application entry point for agq CLI and lifecycle hook execution.
+ */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 

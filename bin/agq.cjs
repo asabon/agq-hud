@@ -608,6 +608,25 @@ function formatCompactHookMarkdown(group, userTierName) {
   const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
   return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; ${pctDisplay} ${badge.emoji} \`${bar}\` &nbsp;\xB7&nbsp; Reset: **${resetStr}**${tier}`;
 }
+function formatHookTitle(summary, currentModelName, options) {
+  const forceAll = options?.forceAll ?? process.env.AGQ_SHOW_ALL === "1";
+  const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : void 0;
+  if (matchedGroup) {
+    if (matchedGroup.limit5h && matchedGroup.limitWeekly) {
+      const b5h = getStatusBadge(matchedGroup.limit5h.remainingPercentage).emoji;
+      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      return `\u26A1 Quota: ${matchedGroup.family} \xB7 5h: ${matchedGroup.limit5h.remainingPercentage.toFixed(1)}% ${b5h} \xB7 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
+    }
+    if (matchedGroup.limitWeekly && !matchedGroup.limit5h) {
+      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      return `\u26A1 Quota: ${matchedGroup.family} \xB7 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
+    }
+    const b = getStatusBadge(matchedGroup.remainingPercentage).emoji;
+    return `\u26A1 Quota: ${matchedGroup.family} \xB7 ${matchedGroup.remainingPercentage.toFixed(1)}% ${b}`;
+  }
+  const tier = summary.userTierName ? ` (${summary.userTierName})` : "";
+  return `\u26A1 Model Quota HUD${tier}`;
+}
 function formatHookMarkdown(summary, currentModelName, options) {
   const forceAll = options?.forceAll ?? process.env.AGQ_SHOW_ALL === "1";
   const preferTable = options?.format === "table" || process.env.AGQ_HUD_FORMAT === "table";
@@ -798,17 +817,17 @@ async function handleHookMode(flags) {
     const markdown = formatHookMarkdown(summary, hookInput.modelName, {
       forceAll: flags.showAll
     });
+    const title = formatHookTitle(summary, hookInput.modelName, {
+      forceAll: flags.showAll
+    });
     const output = {
       injectSteps: [
         {
           systemMessage: {
             systemMessage: markdown,
             renderInfo: {
-              title: "\u26A1 Model Quota HUD",
+              title,
               markdown
-            },
-            metadata: {
-              user_markdown: markdown
             }
           }
         }
