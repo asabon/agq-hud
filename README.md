@@ -12,9 +12,9 @@ A lightweight Antigravity plugin and standalone CLI tool that displays real-time
 
 ## ✨ Key Features
 
-1. **Zero-Token Overhead Inline Chat HUD (Hook Mode)**
-   - Utilizes Antigravity's `PreInvocation` lifecycle hook to render real-time quota information via `metadata.user_markdown`.
-   - **Zero token consumption**: Uses `systemMessage: ""` to avoid feeding prompt tokens to LLMs.
+1. **Zero-Token Overhead Inline Chat HUD (Hook & Rule Mode)**
+   - Utilizes Antigravity's `PreInvocation` lifecycle hook to inject real-time quota information into the turn.
+   - Bundles a built-in agent rule (`rules/quota-hud.md`) to automatically append the quota HUD banner directly to the footer of every assistant response, glanceable without expanding accordions.
    - **Dual Limit Visibility (5h & Weekly)**: Communicates with Antigravity's `RetrieveUserQuotaSummary` RPC to track both short-term 5-hour burst limits and full 1-week limits.
    - **Ultra-compact single-line HUD**: By default, displays only the currently active conversation model as an unobtrusive single-line status banner.
    - Fallback / customizable: Automatically falls back to full table view if the active model cannot be detected, or when `--all` / `AGQ_SHOW_ALL=1` is configured.
