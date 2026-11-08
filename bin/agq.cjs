@@ -802,7 +802,11 @@ async function handleHookMode(flags) {
       injectSteps: [
         {
           systemMessage: {
-            systemMessage: "",
+            systemMessage: markdown,
+            renderInfo: {
+              title: "\u26A1 Model Quota HUD",
+              markdown
+            },
             metadata: {
               user_markdown: markdown
             }

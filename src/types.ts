@@ -132,9 +132,16 @@ export interface HookSystemMessageMetadata {
   [key: string]: unknown;
 }
 
+export interface HookSystemMessageRenderInfo {
+  title?: string;
+  titlePrefix?: string;
+  markdown?: string;
+}
+
 export interface HookSystemMessage {
   systemMessage: {
     systemMessage: string;
+    renderInfo?: HookSystemMessageRenderInfo;
     metadata?: HookSystemMessageMetadata;
   };
 }

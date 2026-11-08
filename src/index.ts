@@ -64,7 +64,11 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
       injectSteps: [
         {
           systemMessage: {
-            systemMessage: '',
+            systemMessage: markdown,
+            renderInfo: {
+              title: '⚡ Model Quota HUD',
+              markdown,
+            },
             metadata: {
               user_markdown: markdown,
             },
