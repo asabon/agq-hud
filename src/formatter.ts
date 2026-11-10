@@ -1,4 +1,17 @@
-import { ModelGroupQuota, QuotaSummary } from './types.js';
+import { ModelGroupQuota, QuotaBucketInfo, QuotaSummary, SignalMode } from './types.js';
+
+export interface StatusBadge {
+  emoji: string;
+  text: string;
+  colorCode: string;
+}
+
+const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SMART_WARMUP_W0 = 15;
+const SMART_GREEN_HOLD_RATIO = 0.90;
+const SMART_YELLOW_HOLD_RATIO = 0.60;
+const THRESHOLD_GREEN_PCT = 60;
+const THRESHOLD_YELLOW_PCT = 25;
 
 export function formatTimeRemaining(ms?: number): string {
   if (ms === undefined || isNaN(ms)) return 'Unknown';
@@ -30,17 +43,91 @@ export function makeProgressBar(percentage: number, width = 10): string {
   return '█'.repeat(filledCount) + '░'.repeat(emptyCount);
 }
 
-function getStatusBadge(percentage: number): { emoji: string; text: string; colorCode: string } {
+export function getThresholdBadge(percentage: number): StatusBadge {
   if (percentage <= 0) {
     return { emoji: '🔴', text: 'Empty', colorCode: '\x1b[31m' }; // Red
   }
-  if (percentage < 25) {
-    return { emoji: '⚠️', text: 'Low', colorCode: '\x1b[33m' }; // Yellow
+  if (percentage < THRESHOLD_YELLOW_PCT) {
+    return { emoji: '🔴', text: 'Low', colorCode: '\x1b[31m' }; // Red
   }
-  if (percentage < 60) {
-    return { emoji: '🟡', text: 'Fair', colorCode: '\x1b[36m' }; // Cyan
+  if (percentage < THRESHOLD_GREEN_PCT) {
+    return { emoji: '🟡', text: 'Fair', colorCode: '\x1b[33m' }; // Yellow
   }
   return { emoji: '🟢', text: 'Good', colorCode: '\x1b[32m' }; // Green
+}
+
+/**
+ * Calculates the smoothed HoldRatio for a 1-week quota bucket.
+ *
+ * Uses a continuous warmup buffer W0 to avoid abrupt threshold jumps at reset boundaries:
+ * - e = 100 - r_t (elapsed time percentage)
+ * - U = 100 - R (used quota percentage)
+ * - P = (U + W0) / (e + W0) (smoothed consumption pace)
+ * - HoldRatio = (R / P) / r_t
+ */
+export function calculateWeeklyHoldRatio(remainingPercentage: number, timeUntilResetMs: number): number {
+  const remaining = Math.max(0, Math.min(100, remainingPercentage));
+  if (remaining <= 0) {
+    return 0;
+  }
+
+  const remainingTimePct = Math.max(0, Math.min(100, (timeUntilResetMs / WEEKLY_WINDOW_MS) * 100));
+  if (remainingTimePct <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const elapsedPct = 100 - remainingTimePct;
+  const usedPct = 100 - remaining;
+  const smoothedPace = (usedPct + SMART_WARMUP_W0) / (elapsedPct + SMART_WARMUP_W0);
+
+  return remaining / smoothedPace / remainingTimePct;
+}
+
+export function getSmartWeeklyBadge(percentage: number, timeUntilResetMs?: number): StatusBadge {
+  if (percentage <= 0) {
+    return { emoji: '🔴', text: 'Empty', colorCode: '\x1b[31m' }; // Red
+  }
+  if (timeUntilResetMs === undefined || Number.isNaN(timeUntilResetMs)) {
+    return getThresholdBadge(percentage);
+  }
+
+  const holdRatio = calculateWeeklyHoldRatio(percentage, timeUntilResetMs);
+  if (holdRatio >= SMART_GREEN_HOLD_RATIO) {
+    return { emoji: '🟢', text: 'Good', colorCode: '\x1b[32m' }; // Green
+  }
+  if (holdRatio >= SMART_YELLOW_HOLD_RATIO) {
+    return { emoji: '🟡', text: 'Fair', colorCode: '\x1b[33m' }; // Yellow
+  }
+  return { emoji: '🔴', text: 'Low', colorCode: '\x1b[31m' }; // Red
+}
+
+export interface StatusBadgeOptions {
+  signalMode?: SignalMode;
+  window?: string;
+  timeUntilResetMs?: number;
+}
+
+export function getStatusBadge(percentage: number, options?: StatusBadgeOptions): StatusBadge {
+  const mode = options?.signalMode ?? 'smart';
+  const win = (options?.window || '').toLowerCase();
+  const isWeekly = win === 'weekly' || win === '1w';
+
+  if (mode === 'smart' && isWeekly) {
+    return getSmartWeeklyBadge(percentage, options?.timeUntilResetMs);
+  }
+  return getThresholdBadge(percentage);
+}
+
+function getBucketBadge(
+  bucket: QuotaBucketInfo,
+  signalMode: SignalMode,
+  fallbackWindow?: string
+): StatusBadge {
+  return getStatusBadge(bucket.remainingPercentage, {
+    signalMode,
+    window: bucket.window || fallbackWindow,
+    timeUntilResetMs: bucket.timeUntilResetMs,
+  });
 }
 
 /**
@@ -99,13 +186,17 @@ export function findMatchingGroup(
 /**
  * Formats a single model group as a concise one-line banner HUD
  */
-export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?: string): string {
+export function formatCompactHookMarkdown(
+  group: ModelGroupQuota,
+  userTierName?: string,
+  signalMode: SignalMode = 'smart'
+): string {
   const tier = userTierName ? ` &nbsp;·&nbsp; \`${userTierName}\`` : '';
 
   // If both 5h and weekly limits are available:
   if (group.limit5h && group.limitWeekly) {
-    const badge5h = getStatusBadge(group.limit5h.remainingPercentage);
-    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const badge5h = getBucketBadge(group.limit5h, signalMode, '5h');
+    const badgeW = getBucketBadge(group.limitWeekly, signalMode, 'weekly');
     const reset5h = formatTimeRemaining(group.limit5h.timeUntilResetMs);
     const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
 
@@ -114,14 +205,14 @@ export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?:
 
   // If only weekly limit is available (e.g. Gemini 4 Argon):
   if (group.limitWeekly && !group.limit5h) {
-    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const badgeW = getBucketBadge(group.limitWeekly, signalMode, 'weekly');
     const bar = makeProgressBar(group.limitWeekly.remainingPercentage, 10);
     const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
     return `> 📊 **${group.family}** &nbsp;·&nbsp; 1w: \`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${badgeW.emoji} \`${bar}\` &nbsp;·&nbsp; Reset: **${resetW}**${tier}`;
   }
 
   // Fallback to single percentage format:
-  const badge = getStatusBadge(group.remainingPercentage);
+  const badge = getStatusBadge(group.remainingPercentage, { signalMode });
   const bar = makeProgressBar(group.remainingPercentage, 10);
   const resetStr = formatTimeRemaining(group.timeUntilResetMs);
   const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
@@ -134,28 +225,29 @@ export function formatCompactHookMarkdown(group: ModelGroupQuota, userTierName?:
  *
  * @param summary - Parsed quota summary containing model groups and tier information.
  * @param currentModelName - Optional current model name to highlight or filter.
- * @param options - Options controlling whether to show all models or a single model group.
+ * @param options - Options controlling whether to show all models or a single model group and signal mode.
  * @returns Formatted title string including status badges and reset times.
  */
 export function formatHookTitle(
   summary: QuotaSummary,
   currentModelName?: string,
-  options?: { forceAll?: boolean }
+  options?: { forceAll?: boolean; signalMode?: SignalMode }
 ): string {
   const forceAll = options?.forceAll ?? (process.env.AGQ_SHOW_ALL === '1');
+  const signalMode = options?.signalMode ?? 'smart';
   const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : undefined;
 
   if (matchedGroup) {
     if (matchedGroup.limit5h && matchedGroup.limitWeekly) {
-      const b5h = getStatusBadge(matchedGroup.limit5h.remainingPercentage).emoji;
-      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      const b5h = getBucketBadge(matchedGroup.limit5h, signalMode, '5h').emoji;
+      const bW = getBucketBadge(matchedGroup.limitWeekly, signalMode, 'weekly').emoji;
       return `⚡ Quota: ${matchedGroup.family} · 5h: ${matchedGroup.limit5h.remainingPercentage.toFixed(1)}% ${b5h} · 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
     }
     if (matchedGroup.limitWeekly && !matchedGroup.limit5h) {
-      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      const bW = getBucketBadge(matchedGroup.limitWeekly, signalMode, 'weekly').emoji;
       return `⚡ Quota: ${matchedGroup.family} · 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
     }
-    const b = getStatusBadge(matchedGroup.remainingPercentage).emoji;
+    const b = getStatusBadge(matchedGroup.remainingPercentage, { signalMode }).emoji;
     return `⚡ Quota: ${matchedGroup.family} · ${matchedGroup.remainingPercentage.toFixed(1)}% ${b}`;
   }
 
@@ -169,16 +261,17 @@ export function formatHookTitle(
 export function formatHookMarkdown(
   summary: QuotaSummary,
   currentModelName?: string,
-  options?: { forceAll?: boolean; format?: 'compact' | 'table' }
+  options?: { forceAll?: boolean; format?: 'compact' | 'table'; signalMode?: SignalMode }
 ): string {
   const forceAll = options?.forceAll ?? (process.env.AGQ_SHOW_ALL === '1');
   const preferTable = options?.format === 'table' || process.env.AGQ_HUD_FORMAT === 'table';
+  const signalMode = options?.signalMode ?? 'smart';
 
   const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : undefined;
 
   // When a single model is selected, display concise 1-line banner (unless table format is explicitly requested)
   if (matchedGroup && !preferTable) {
-    return formatCompactHookMarkdown(matchedGroup, summary.userTierName);
+    return formatCompactHookMarkdown(matchedGroup, summary.userTierName, signalMode);
   }
 
   // Otherwise, render table format
@@ -204,10 +297,10 @@ export function formatHookMarkdown(
       const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** 🎯` : `**${group.family}**`;
 
       const p5h = group.limit5h
-        ? `\`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limit5h.remainingPercentage).emoji}`
+        ? `\`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${getBucketBadge(group.limit5h, signalMode, '5h').emoji}`
         : '-';
       const pW = group.limitWeekly
-        ? `\`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limitWeekly.remainingPercentage).emoji}`
+        ? `\`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${getBucketBadge(group.limitWeekly, signalMode, 'weekly').emoji}`
         : '-';
 
       const reset5h = group.limit5h ? formatTimeRemaining(group.limit5h.timeUntilResetMs) : '-';
@@ -226,7 +319,7 @@ export function formatHookMarkdown(
           (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) ||
             currentModelName.toLowerCase().includes(group.family.toLowerCase()));
 
-      const badge = getStatusBadge(group.remainingPercentage);
+      const badge = getStatusBadge(group.remainingPercentage, { signalMode });
       const bar = makeProgressBar(group.remainingPercentage, 10);
       const resetStr = formatTimeRemaining(group.timeUntilResetMs);
 
@@ -247,7 +340,8 @@ export function formatCliTable(
   summary: QuotaSummary,
   verbose = false,
   isTty = true,
-  filter?: string
+  filter?: string,
+  signalMode: SignalMode = 'smart'
 ): string {
   const resetCode = isTty ? '\x1b[0m' : '';
   const boldCode = isTty ? '\x1b[1m' : '';
@@ -313,7 +407,7 @@ export function formatCliTable(
       let p5hStr = '-';
       let color5h = '';
       if (item.limit5h) {
-        const badge = getStatusBadge(item.limit5h.remainingPercentage);
+        const badge = getBucketBadge(item.limit5h, signalMode, '5h');
         color5h = isTty ? badge.colorCode : '';
         p5hStr = `${item.limit5h.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
       }
@@ -322,7 +416,7 @@ export function formatCliTable(
       let pWStr = '-';
       let colorW = '';
       if (item.limitWeekly) {
-        const badge = getStatusBadge(item.limitWeekly.remainingPercentage);
+        const badge = getBucketBadge(item.limitWeekly, signalMode, 'weekly');
         colorW = isTty ? badge.colorCode : '';
         pWStr = `${item.limitWeekly.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
       }
@@ -355,7 +449,7 @@ export function formatCliTable(
     out.push(sep);
 
     for (const item of targetList) {
-      const badge = getStatusBadge(item.percentage);
+      const badge = getStatusBadge(item.percentage, { signalMode });
       const color = isTty ? badge.colorCode : '';
       const bar = `[${makeProgressBar(item.percentage, 10)}]`;
       const pctStr = `${item.percentage.toFixed(1)}%`;

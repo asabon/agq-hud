@@ -144,7 +144,78 @@ describe('Hook PreInvocation Contract Verification', () => {
     assert.match(result, /agq-hud/);
     assert.match(result, /USAGE/);
     assert.match(result, /--hook/);
+    assert.match(result, /--signal/);
     assert.doesNotMatch(result, /^\s*agq\s+\[/m);
+  });
+
+  it('rejects invalid --signal values in CLI mode with non-zero exit code', () => {
+    const binPath = path.resolve(__dirname, '../../bin/agq.cjs');
+    assert.throws(
+      () => {
+        execFileSync(process.execPath, [binPath, '--signal', 'invalid'], {
+          encoding: 'utf8',
+          timeout: 5000,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      },
+      (err: unknown) => {
+        const execErr = err as { status?: number; stderr?: string };
+        return execErr.status === 1 && typeof execErr.stderr === 'string' && execErr.stderr.includes('Invalid --signal');
+      }
+    );
+  });
+
+  it('applies signalMode in buildHookOutput while keeping 1-line HUD and clean renderInfo', () => {
+    const weeklyPacedSummary: QuotaSummary = {
+      userTierName: 'Google AI Pro',
+      allModels: [],
+      groups: [
+        {
+          family: 'Gemini 3.8 Flash',
+          remainingPercentage: 95.0,
+          timeUntilResetMs: 7200000,
+          buckets: [],
+          limit5h: {
+            bucketId: '5h',
+            displayName: '5h',
+            window: '5h',
+            remainingPercentage: 95.0,
+            timeUntilResetMs: 7200000,
+          },
+          limitWeekly: {
+            bucketId: 'weekly',
+            displayName: 'weekly',
+            window: 'weekly',
+            remainingPercentage: 58.0,
+            timeUntilResetMs: 72 * 60 * 60 * 1000,
+          },
+          models: [
+            {
+              label: 'Gemini 3.8 Flash',
+              modelId: 'gemini-3.8-flash',
+              family: 'Gemini 3.8 Flash',
+              tierVariant: '',
+              remainingPercentage: 95.0,
+              timeUntilResetMs: 7200000,
+            },
+          ],
+        },
+      ],
+    };
+
+    const smartOut = buildHookOutput(weeklyPacedSummary, 'Gemini 3.8 Flash', { signalMode: 'smart' });
+    const smartMsg = smartOut.injectSteps?.[0]?.systemMessage;
+    assert.ok(smartMsg?.renderInfo?.markdown);
+    assert.equal(smartMsg.renderInfo.markdown.includes('\n'), false);
+    assert.match(smartMsg.renderInfo.markdown, /1w: `58\.0%` 🟢/);
+    assert.match(smartMsg.renderInfo.title || '', /1w: 58\.0% 🟢/);
+
+    const thresholdOut = buildHookOutput(weeklyPacedSummary, 'Gemini 3.8 Flash', { signalMode: 'threshold' });
+    const thresholdMsg = thresholdOut.injectSteps?.[0]?.systemMessage;
+    assert.ok(thresholdMsg?.renderInfo?.markdown);
+    assert.equal(thresholdMsg.renderInfo.markdown.includes('\n'), false);
+    assert.match(thresholdMsg.renderInfo.markdown, /1w: `58\.0%` 🟡/);
+    assert.match(thresholdMsg.renderInfo.title || '', /1w: 58\.0% 🟡/);
   });
 
   it('exposes only agq-hud binary command in package.json', async () => {

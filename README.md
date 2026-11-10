@@ -114,6 +114,9 @@ agq-hud claude
 # Show detailed breakdown for all model tiers/variants
 agq-hud -v
 
+# Switch signal mode ('smart' or 'threshold')
+agq-hud --signal threshold
+
 # Output raw JSON
 agq-hud --json
 
@@ -133,7 +136,7 @@ Tier: Google AI Pro (user@example.com)
 ────────────────────────────────────────────────────────────────────────────────
  Model              5h Limit      Weekly Limit  Reset (5h)    Reset (1w)    
 ────────────────────────────────────────────────────────────────────────────────
- Gemini 4 Argon     -             12.7% ⚠️      -             5d 16h        
+ Gemini 4 Argon     -             12.7% 🔴      -             5d 16h        
  Gemini 3.8 Flash   64.5% 🟢      75.5% 🟢      3m            5d 16h        
  Claude Opus 5.5    100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
  Claude Sonnet 5.5  100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
@@ -144,12 +147,32 @@ Tip: Run with -v or --verbose to view all model sub-variants.
 
 ---
 
-### 3. Configuration & Environment Variables
+### 3. Configuration, Signal Modes & Environment Variables
 
-You can customize the HUD format and behavior using environment variables or command-line flags:
+#### Signal Modes (`smart` vs `threshold`)
+
+All status badges are unified into 3 levels (**🟢 / 🟡 / 🔴**) across both the inline HUD and the CLI table:
+
+- **`smart` (default)**: Applies a pace-aware continuous model to `1w` (weekly) buckets using a warmup buffer (`W0 = 15`) and `HoldRatio = (R / P) / r_t` (`>= 0.90` 🟢, `>= 0.60` 🟡, `< 0.60` or `0%` 🔴), while `5h` buckets and buckets without reset timing use the fixed 3-level thresholds (`>= 60%` 🟢, `>= 25%` 🟡, `< 25%` 🔴).
+- **`threshold`**: Uses fixed percentage thresholds (`>= 60%` 🟢, `>= 25%` 🟡, `< 25%` 🔴) for all buckets.
+
+#### Configuration File (`~/.gemini/config/agq-hud.json`)
+
+You can persist your preferred signal mode in `~/.gemini/config/agq-hud.json`:
+
+```json
+{
+  "signalMode": "smart"
+}
+```
+
+#### Environment Variables & Precedence
+
+Signal mode resolution precedence: `--signal` CLI flag > `AGQ_SIGNAL_MODE` > `~/.gemini/config/agq-hud.json` > `smart`.
 
 | Variable | Values | Description |
 | :--- | :--- | :--- |
+| `AGQ_SIGNAL_MODE` | `smart`, `threshold` | Select signal evaluation mode (default: `smart`). Overridden by `--signal`. |
 | `AGQ_SHOW_ALL` | `1`, `true` | Show full table of all models in HUD (disables active model filter). Equivalent to `--all`. |
 | `AGQ_HUD_FORMAT` | `table`, `compact` | Force table format even when single active model is detected (default: `compact`). |
 
@@ -171,6 +194,7 @@ agq-hud/
 ├── src/
 │   ├── index.ts        # CLI & Hook entrypoint
 │   ├── hook.ts         # PreInvocation hook payload builder
+│   ├── config.ts       # Config file & signal mode resolution
 │   ├── types.ts        # Type definitions & interfaces
 │   ├── detector.ts     # Cross-platform process/port discovery
 │   ├── client.ts       # Language Server RPC client
@@ -178,6 +202,7 @@ agq-hud/
 ├── test/
 │   ├── hook-contract.test.ts # Antigravity contract verification tests
 │   ├── formatter.test.ts     # Formatting & calculation unit tests
+│   ├── config.test.ts        # Config & precedence unit tests
 │   └── run.cjs               # Test runner
 └── README.md           # Documentation
 ```

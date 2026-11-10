@@ -307,6 +307,53 @@ function parseQuotaSummary(data, quotaSummaryData) {
   };
 }
 
+// src/config.ts
+var import_fs = __toESM(require("fs"));
+var import_os = __toESM(require("os"));
+var import_path = __toESM(require("path"));
+var DEFAULT_SIGNAL_MODE = "smart";
+function getDefaultConfigPath() {
+  return import_path.default.join(import_os.default.homedir(), ".gemini", "config", "agq-hud.json");
+}
+function parseSignalMode(raw) {
+  if (typeof raw !== "string") return void 0;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "smart" || normalized === "threshold") {
+    return normalized;
+  }
+  return void 0;
+}
+function loadConfig(configPath = getDefaultConfigPath()) {
+  try {
+    if (!import_fs.default.existsSync(configPath)) {
+      return {};
+    }
+    const raw = import_fs.default.readFileSync(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const config = {};
+    const parsedMode = parseSignalMode(parsed.signalMode);
+    if (parsedMode) {
+      config.signalMode = parsedMode;
+    }
+    return config;
+  } catch {
+    return {};
+  }
+}
+function resolveSignalMode(options) {
+  const fromCli = parseSignalMode(options?.cliMode);
+  if (fromCli) return fromCli;
+  const envRaw = options?.envMode !== void 0 ? options.envMode : process.env.AGQ_SIGNAL_MODE;
+  const fromEnv = parseSignalMode(envRaw);
+  if (fromEnv) return fromEnv;
+  const config = loadConfig(options?.configPath);
+  if (config.signalMode) return config.signalMode;
+  return DEFAULT_SIGNAL_MODE;
+}
+
 // src/detector.ts
 var import_child_process = require("child_process");
 var import_http2 = __toESM(require("http"));
@@ -532,6 +579,12 @@ async function detectConnection() {
 }
 
 // src/formatter.ts
+var WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1e3;
+var SMART_WARMUP_W0 = 15;
+var SMART_GREEN_HOLD_RATIO = 0.9;
+var SMART_YELLOW_HOLD_RATIO = 0.6;
+var THRESHOLD_GREEN_PCT = 60;
+var THRESHOLD_YELLOW_PCT = 25;
 function formatTimeRemaining(ms) {
   if (ms === void 0 || isNaN(ms)) return "Unknown";
   if (ms <= 0) return "Reset now";
@@ -557,17 +610,63 @@ function makeProgressBar(percentage, width = 10) {
   const emptyCount = width - filledCount;
   return "\u2588".repeat(filledCount) + "\u2591".repeat(emptyCount);
 }
-function getStatusBadge(percentage) {
+function getThresholdBadge(percentage) {
   if (percentage <= 0) {
     return { emoji: "\u{1F534}", text: "Empty", colorCode: "\x1B[31m" };
   }
-  if (percentage < 25) {
-    return { emoji: "\u26A0\uFE0F", text: "Low", colorCode: "\x1B[33m" };
+  if (percentage < THRESHOLD_YELLOW_PCT) {
+    return { emoji: "\u{1F534}", text: "Low", colorCode: "\x1B[31m" };
   }
-  if (percentage < 60) {
-    return { emoji: "\u{1F7E1}", text: "Fair", colorCode: "\x1B[36m" };
+  if (percentage < THRESHOLD_GREEN_PCT) {
+    return { emoji: "\u{1F7E1}", text: "Fair", colorCode: "\x1B[33m" };
   }
   return { emoji: "\u{1F7E2}", text: "Good", colorCode: "\x1B[32m" };
+}
+function calculateWeeklyHoldRatio(remainingPercentage, timeUntilResetMs) {
+  const remaining = Math.max(0, Math.min(100, remainingPercentage));
+  if (remaining <= 0) {
+    return 0;
+  }
+  const remainingTimePct = Math.max(0, Math.min(100, timeUntilResetMs / WEEKLY_WINDOW_MS * 100));
+  if (remainingTimePct <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const elapsedPct = 100 - remainingTimePct;
+  const usedPct = 100 - remaining;
+  const smoothedPace = (usedPct + SMART_WARMUP_W0) / (elapsedPct + SMART_WARMUP_W0);
+  return remaining / smoothedPace / remainingTimePct;
+}
+function getSmartWeeklyBadge(percentage, timeUntilResetMs) {
+  if (percentage <= 0) {
+    return { emoji: "\u{1F534}", text: "Empty", colorCode: "\x1B[31m" };
+  }
+  if (timeUntilResetMs === void 0 || Number.isNaN(timeUntilResetMs)) {
+    return getThresholdBadge(percentage);
+  }
+  const holdRatio = calculateWeeklyHoldRatio(percentage, timeUntilResetMs);
+  if (holdRatio >= SMART_GREEN_HOLD_RATIO) {
+    return { emoji: "\u{1F7E2}", text: "Good", colorCode: "\x1B[32m" };
+  }
+  if (holdRatio >= SMART_YELLOW_HOLD_RATIO) {
+    return { emoji: "\u{1F7E1}", text: "Fair", colorCode: "\x1B[33m" };
+  }
+  return { emoji: "\u{1F534}", text: "Low", colorCode: "\x1B[31m" };
+}
+function getStatusBadge(percentage, options) {
+  const mode = options?.signalMode ?? "smart";
+  const win = (options?.window || "").toLowerCase();
+  const isWeekly = win === "weekly" || win === "1w";
+  if (mode === "smart" && isWeekly) {
+    return getSmartWeeklyBadge(percentage, options?.timeUntilResetMs);
+  }
+  return getThresholdBadge(percentage);
+}
+function getBucketBadge(bucket, signalMode, fallbackWindow) {
+  return getStatusBadge(bucket.remainingPercentage, {
+    signalMode,
+    window: bucket.window || fallbackWindow,
+    timeUntilResetMs: bucket.timeUntilResetMs
+  });
 }
 function findMatchingGroup(groups, currentModelName) {
   if (!currentModelName) return void 0;
@@ -599,22 +698,22 @@ function findMatchingGroup(groups, currentModelName) {
   }
   return void 0;
 }
-function formatCompactHookMarkdown(group, userTierName) {
+function formatCompactHookMarkdown(group, userTierName, signalMode = "smart") {
   const tier = userTierName ? ` &nbsp;\xB7&nbsp; \`${userTierName}\`` : "";
   if (group.limit5h && group.limitWeekly) {
-    const badge5h = getStatusBadge(group.limit5h.remainingPercentage);
-    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const badge5h = getBucketBadge(group.limit5h, signalMode, "5h");
+    const badgeW = getBucketBadge(group.limitWeekly, signalMode, "weekly");
     const reset5h = formatTimeRemaining(group.limit5h.timeUntilResetMs);
     const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
     return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; 5h: \`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${badge5h.emoji} (${reset5h}) &nbsp;\xB7&nbsp; 1w: \`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${badgeW.emoji} (${resetW})${tier}`;
   }
   if (group.limitWeekly && !group.limit5h) {
-    const badgeW = getStatusBadge(group.limitWeekly.remainingPercentage);
+    const badgeW = getBucketBadge(group.limitWeekly, signalMode, "weekly");
     const bar2 = makeProgressBar(group.limitWeekly.remainingPercentage, 10);
     const resetW = formatTimeRemaining(group.limitWeekly.timeUntilResetMs);
     return `> \u{1F4CA} **${group.family}** &nbsp;\xB7&nbsp; 1w: \`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${badgeW.emoji} \`${bar2}\` &nbsp;\xB7&nbsp; Reset: **${resetW}**${tier}`;
   }
-  const badge = getStatusBadge(group.remainingPercentage);
+  const badge = getStatusBadge(group.remainingPercentage, { signalMode });
   const bar = makeProgressBar(group.remainingPercentage, 10);
   const resetStr = formatTimeRemaining(group.timeUntilResetMs);
   const pctDisplay = `\`${group.remainingPercentage.toFixed(1)}%\``;
@@ -622,18 +721,19 @@ function formatCompactHookMarkdown(group, userTierName) {
 }
 function formatHookTitle(summary, currentModelName, options) {
   const forceAll = options?.forceAll ?? process.env.AGQ_SHOW_ALL === "1";
+  const signalMode = options?.signalMode ?? "smart";
   const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : void 0;
   if (matchedGroup) {
     if (matchedGroup.limit5h && matchedGroup.limitWeekly) {
-      const b5h = getStatusBadge(matchedGroup.limit5h.remainingPercentage).emoji;
-      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      const b5h = getBucketBadge(matchedGroup.limit5h, signalMode, "5h").emoji;
+      const bW = getBucketBadge(matchedGroup.limitWeekly, signalMode, "weekly").emoji;
       return `\u26A1 Quota: ${matchedGroup.family} \xB7 5h: ${matchedGroup.limit5h.remainingPercentage.toFixed(1)}% ${b5h} \xB7 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
     }
     if (matchedGroup.limitWeekly && !matchedGroup.limit5h) {
-      const bW = getStatusBadge(matchedGroup.limitWeekly.remainingPercentage).emoji;
+      const bW = getBucketBadge(matchedGroup.limitWeekly, signalMode, "weekly").emoji;
       return `\u26A1 Quota: ${matchedGroup.family} \xB7 1w: ${matchedGroup.limitWeekly.remainingPercentage.toFixed(1)}% ${bW}`;
     }
-    const b = getStatusBadge(matchedGroup.remainingPercentage).emoji;
+    const b = getStatusBadge(matchedGroup.remainingPercentage, { signalMode }).emoji;
     return `\u26A1 Quota: ${matchedGroup.family} \xB7 ${matchedGroup.remainingPercentage.toFixed(1)}% ${b}`;
   }
   const tier = summary.userTierName ? ` (${summary.userTierName})` : "";
@@ -642,9 +742,10 @@ function formatHookTitle(summary, currentModelName, options) {
 function formatHookMarkdown(summary, currentModelName, options) {
   const forceAll = options?.forceAll ?? process.env.AGQ_SHOW_ALL === "1";
   const preferTable = options?.format === "table" || process.env.AGQ_HUD_FORMAT === "table";
+  const signalMode = options?.signalMode ?? "smart";
   const matchedGroup = !forceAll ? findMatchingGroup(summary.groups, currentModelName) : void 0;
   if (matchedGroup && !preferTable) {
-    return formatCompactHookMarkdown(matchedGroup, summary.userTierName);
+    return formatCompactHookMarkdown(matchedGroup, summary.userTierName, signalMode);
   }
   const targetGroups = matchedGroup ? [matchedGroup] : summary.groups;
   const tier = summary.userTierName || "Standard";
@@ -658,8 +759,8 @@ function formatHookMarkdown(summary, currentModelName, options) {
     for (const group of targetGroups) {
       const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
       const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
-      const p5h = group.limit5h ? `\`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limit5h.remainingPercentage).emoji}` : "-";
-      const pW = group.limitWeekly ? `\`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${getStatusBadge(group.limitWeekly.remainingPercentage).emoji}` : "-";
+      const p5h = group.limit5h ? `\`${group.limit5h.remainingPercentage.toFixed(1)}%\` ${getBucketBadge(group.limit5h, signalMode, "5h").emoji}` : "-";
+      const pW = group.limitWeekly ? `\`${group.limitWeekly.remainingPercentage.toFixed(1)}%\` ${getBucketBadge(group.limitWeekly, signalMode, "weekly").emoji}` : "-";
       const reset5h = group.limit5h ? formatTimeRemaining(group.limit5h.timeUntilResetMs) : "-";
       const resetW = group.limitWeekly ? formatTimeRemaining(group.limitWeekly.timeUntilResetMs) : "-";
       lines.push(`> | ${nameDisplay} | ${p5h} | ${pW} | ${reset5h} | ${resetW} |`);
@@ -669,7 +770,7 @@ function formatHookMarkdown(summary, currentModelName, options) {
     lines.push(`> | :--- | :--- | :--- | :--- |`);
     for (const group of targetGroups) {
       const isCurrent = matchedGroup ? true : currentModelName && (group.models.some((m) => currentModelName.toLowerCase().includes(m.family.toLowerCase())) || currentModelName.toLowerCase().includes(group.family.toLowerCase()));
-      const badge = getStatusBadge(group.remainingPercentage);
+      const badge = getStatusBadge(group.remainingPercentage, { signalMode });
       const bar = makeProgressBar(group.remainingPercentage, 10);
       const resetStr = formatTimeRemaining(group.timeUntilResetMs);
       const nameDisplay = isCurrent && targetGroups.length > 1 ? `**${group.family}** \u{1F3AF}` : `**${group.family}**`;
@@ -679,7 +780,7 @@ function formatHookMarkdown(summary, currentModelName, options) {
   }
   return lines.join("\n");
 }
-function formatCliTable(summary, verbose = false, isTty = true, filter) {
+function formatCliTable(summary, verbose = false, isTty = true, filter, signalMode = "smart") {
   const resetCode = isTty ? "\x1B[0m" : "";
   const boldCode = isTty ? "\x1B[1m" : "";
   const dimCode = isTty ? "\x1B[2m" : "";
@@ -731,7 +832,7 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
       let p5hStr = "-";
       let color5h = "";
       if (item.limit5h) {
-        const badge = getStatusBadge(item.limit5h.remainingPercentage);
+        const badge = getBucketBadge(item.limit5h, signalMode, "5h");
         color5h = isTty ? badge.colorCode : "";
         p5hStr = `${item.limit5h.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
       }
@@ -739,7 +840,7 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
       let pWStr = "-";
       let colorW = "";
       if (item.limitWeekly) {
-        const badge = getStatusBadge(item.limitWeekly.remainingPercentage);
+        const badge = getBucketBadge(item.limitWeekly, signalMode, "weekly");
         colorW = isTty ? badge.colorCode : "";
         pWStr = `${item.limitWeekly.remainingPercentage.toFixed(1)}% ${badge.emoji}`;
       }
@@ -764,7 +865,7 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
     );
     out.push(sep);
     for (const item of targetList) {
-      const badge = getStatusBadge(item.percentage);
+      const badge = getStatusBadge(item.percentage, { signalMode });
       const color = isTty ? badge.colorCode : "";
       const bar = `[${makeProgressBar(item.percentage, 10)}]`;
       const pctStr = `${item.percentage.toFixed(1)}%`;
@@ -787,10 +888,12 @@ function formatCliTable(summary, verbose = false, isTty = true, filter) {
 // src/hook.ts
 function buildHookOutput(summary, modelName, options) {
   const markdown = formatHookMarkdown(summary, modelName, {
-    forceAll: options?.forceAll
+    forceAll: options?.forceAll,
+    signalMode: options?.signalMode
   });
   const title = formatHookTitle(summary, modelName, {
-    forceAll: options?.forceAll
+    forceAll: options?.forceAll,
+    signalMode: options?.signalMode
   });
   return {
     injectSteps: [
@@ -851,7 +954,8 @@ async function handleHookMode(flags) {
     const { statusData, quotaSummaryData } = await fetchFullQuota(conn, 2500);
     const summary = parseQuotaSummary(statusData, quotaSummaryData);
     const output = buildHookOutput(summary, hookInput.modelName, {
-      forceAll: flags.showAll
+      forceAll: flags.showAll,
+      signalMode: flags.signalMode
     });
     process.stdout.write(JSON.stringify(output) + "\n");
   } catch {
@@ -873,7 +977,7 @@ async function handleCliMode(flags) {
       return;
     }
     const isTty = process.stdout.isTTY ?? true;
-    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter);
+    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter, flags.signalMode);
     console.log(table);
   } catch (err) {
     console.error(`\u274C Error fetching quota: ${err.message}`);
@@ -889,42 +993,94 @@ USAGE:
   agq-hud [OPTIONS] [FILTER]
 
 ARGUMENTS:
-  [FILTER]       Filter models by name or family (e.g., 'flash', 'claude')
+  [FILTER]               Filter models by name or family (e.g., 'flash', 'claude')
 
 OPTIONS:
-  --hook         Run in Lifecycle Hook mode (PreInvocation JSON contract)
-  --all          Display all models in HUD (disables active model filter)
-  -v, --verbose  Display all model sub-variants and detailed breakdown
-  --json         Output quota summary in raw JSON format
-  -V, --version  Show version number
-  -h, --help     Show this help message
+  --hook                 Run in Lifecycle Hook mode (PreInvocation JSON contract)
+  --all                  Display all models in HUD (disables active model filter)
+  --signal <mode>        Signal display mode: 'smart' (default) or 'threshold'
+  -v, --verbose          Display all model sub-variants and detailed breakdown
+  --json                 Output quota summary in raw JSON format
+  -V, --version          Show version number
+  -h, --help             Show this help message
+
+CONFIGURATION:
+  Precedence: --signal > AGQ_SIGNAL_MODE > ~/.gemini/config/agq-hud.json > 'smart'
 
 EXAMPLES:
-  agq-hud            Show concise quota summary table in terminal
-  agq-hud flash      Show quota for models matching 'flash'
-  agq-hud -v         Show detailed quota table with all variants
-  agq-hud --json     Get machine-readable quota data
+  agq-hud                    Show concise quota summary table in terminal
+  agq-hud --signal threshold Use fixed percentage thresholds instead of smart mode
+  agq-hud flash              Show quota for models matching 'flash'
+  agq-hud -v                 Show detailed quota table with all variants
+  agq-hud --json             Get machine-readable quota data
 `);
 }
+function parseCliArgs(args) {
+  const parsed = {
+    showVersion: false,
+    showHelp: false,
+    hook: false,
+    showAll: false,
+    verbose: false,
+    json: false,
+    signalMissingValue: false
+  };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--version" || arg === "-V") {
+      parsed.showVersion = true;
+    } else if (arg === "--help" || arg === "-h") {
+      parsed.showHelp = true;
+    } else if (arg === "--hook") {
+      parsed.hook = true;
+    } else if (arg === "--all" || arg === "-a") {
+      parsed.showAll = true;
+    } else if (arg === "-v" || arg === "--verbose") {
+      parsed.verbose = true;
+    } else if (arg === "--json") {
+      parsed.json = true;
+    } else if (arg === "--signal") {
+      const next = args[i + 1];
+      if (next !== void 0 && !next.startsWith("-")) {
+        parsed.signalRaw = next;
+        i++;
+      } else {
+        parsed.signalMissingValue = true;
+      }
+    } else if (arg.startsWith("--signal=")) {
+      parsed.signalRaw = arg.slice("--signal=".length);
+    } else if (!arg.startsWith("-") && parsed.filter === void 0) {
+      parsed.filter = arg;
+    }
+  }
+  return parsed;
+}
 async function main() {
-  const args = process.argv.slice(2);
-  if (args.includes("--version") || args.includes("-V")) {
+  const parsed = parseCliArgs(process.argv.slice(2));
+  if (parsed.showVersion) {
     console.log(`agq-hud v${VERSION}`);
     return;
   }
-  if (args.includes("--help") || args.includes("-h")) {
+  if (parsed.showHelp) {
     printHelp();
     return;
   }
-  const showAll = args.includes("--all") || args.includes("-a");
-  if (args.includes("--hook")) {
-    await handleHookMode({ showAll });
+  if (!parsed.hook && (parsed.signalMissingValue || parsed.signalRaw !== void 0 && !parseSignalMode(parsed.signalRaw))) {
+    const detail = parsed.signalMissingValue ? "Missing value for --signal." : `Invalid --signal value: "${parsed.signalRaw}".`;
+    console.error(`\u274C ${detail} Expected 'smart' or 'threshold'.`);
+    process.exit(1);
+  }
+  const signalMode = resolveSignalMode({ cliMode: parsed.signalRaw });
+  if (parsed.hook) {
+    await handleHookMode({ showAll: parsed.showAll, signalMode });
     return;
   }
-  const verbose = args.includes("-v") || args.includes("--verbose");
-  const json = args.includes("--json");
-  const filter = args.find((arg) => !arg.startsWith("-"));
-  await handleCliMode({ verbose, json, filter });
+  await handleCliMode({
+    verbose: parsed.verbose,
+    json: parsed.json,
+    filter: parsed.filter,
+    signalMode
+  });
 }
 main().catch((err) => {
   console.error(err);
