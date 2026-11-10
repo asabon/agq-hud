@@ -162,3 +162,9 @@ export interface HookInput {
   initialNumSteps?: number;
   [key: string]: unknown;
 }
+
+export type SignalMode = 'smart' | 'threshold';
+
+export interface AgqConfig {
+  signalMode?: SignalMode;
+}
