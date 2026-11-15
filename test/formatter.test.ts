@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatTimeRemaining,
@@ -122,6 +122,26 @@ describe('findMatchingGroup', () => {
 });
 
 describe('formatHookTitle and formatHookMarkdown', () => {
+  const isolatedEnvKeys = ['AGQ_HUD_FORMAT', 'AGQ_SHOW_ALL', 'AGQ_SIGNAL_MODE'] as const;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const key of isolatedEnvKeys) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of isolatedEnvKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+  });
+
   const sampleSummary: QuotaSummary = {
     userTierName: 'Google AI Pro',
     allModels: [],
