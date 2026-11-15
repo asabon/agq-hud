@@ -113,6 +113,9 @@ agq-hud claude
 # 詳細一覧（Low / Medium / High 全モデル）
 agq-hud -v
 
+# シグナル表示モードを切り替え（'smart' または 'threshold'）
+agq-hud --signal threshold
+
 # JSON 形式で出力
 agq-hud --json
 
@@ -132,7 +135,7 @@ Tier: Google AI Pro (user@example.com)
 ────────────────────────────────────────────────────────────────────────────────
  Model              5h Limit      Weekly Limit  Reset (5h)    Reset (1w)    
 ────────────────────────────────────────────────────────────────────────────────
- Gemini 4 Argon     -             12.7% ⚠️      -             5d 16h        
+ Gemini 4 Argon     -             12.7% 🔴      -             5d 16h        
  Gemini 3.8 Flash   64.5% 🟢      75.5% 🟢      3m            5d 16h        
  Claude Opus 5.5    100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
  Claude Sonnet 5.5  100.0% 🟢     32.9% 🟡      4h 56m        5d 16h        
@@ -143,12 +146,32 @@ Tip: Run with -v or --verbose to view all model sub-variants.
 
 ---
 
-### 3. 設定 & 環境変数
+### 3. 設定・シグナルモード & 環境変数
 
-環境変数やコマンドラインオプションで HUD の表示形式をカスタマイズできます：
+#### シグナル表示モード（`smart` / `threshold`）
+
+HUD および CLI テーブルのシグナル表示は、いずれも **🟢 / 🟡 / 🔴** の 3 段階に統一されています：
+
+- **`smart`（デフォルト）**: `1w`（週間）バケットに対して、初期ウォームアップバッファ（`W0 = 15`）を用いた平滑化ペース `P` と維持率 `HoldRatio = (R / P) / r_t` による連続的なペース判定を行います（`>= 0.90` 🟢、`>= 0.60` 🟡、`< 0.60` または `0%` 🔴）。`5h` バケットおよび時間情報なしのバケットには固定しきい値（`>= 60%` 🟢、`>= 25%` 🟡、`< 25%` 🔴）を適用します。
+- **`threshold`**: すべてのバケットに対して固定しきい値（`>= 60%` 🟢、`>= 25%` 🟡、`< 25%` 🔴）を適用します。
+
+#### 設定ファイル（`~/.gemini/config/agq-hud.json`）
+
+`~/.gemini/config/agq-hud.json` に設定を保存することでデフォルトの表示モードを切り替えられます：
+
+```json
+{
+  "signalMode": "smart"
+}
+```
+
+#### 環境変数 & 優先順位
+
+優先順位: `--signal` CLI オプション > `AGQ_SIGNAL_MODE` > `~/.gemini/config/agq-hud.json` > `smart`
 
 | 環境変数 | 設定値 | 説明 |
 | :--- | :--- | :--- |
+| `AGQ_SIGNAL_MODE` | `smart`, `threshold` | シグナル判定モードを指定（デフォルト: `smart`）。`--signal` で上書き可能。 |
 | `AGQ_SHOW_ALL` | `1`, `true` | 全モデルのテーブル一覧を HUD に表示（アクティブモデル絞り込みを無効化）。`--all` と同等。 |
 | `AGQ_HUD_FORMAT` | `table`, `compact` | 単一モデル検出時でもテーブル形式で表示を強制（デフォルト: `compact`）。 |
 
@@ -170,6 +193,7 @@ agq-hud/
 ├── src/
 │   ├── index.ts        # CLI / Hook エントリポイント
 │   ├── hook.ts         # PreInvocation フック出力ビルダー
+│   ├── config.ts       # 設定ファイル & シグナルモード解決
 │   ├── types.ts        # データ型・インターフェース定義
 │   ├── detector.ts     # マルチプラットフォーム プロセス/ポート自動探索
 │   ├── client.ts       # Language Server RPC クライアント
@@ -177,6 +201,7 @@ agq-hud/
 ├── test/
 │   ├── hook-contract.test.ts # Antigravity 規約検証テスト
 │   ├── formatter.test.ts     # フォーマット・計算ロジック単体テスト
+│   ├── config.test.ts        # 設定・優先順位単体テスト
 │   └── run.cjs               # テストランナー
 └── README.md           # ドキュメント（英語）
 ```

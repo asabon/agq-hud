@@ -6,7 +6,7 @@
  */
 
 import { formatHookMarkdown, formatHookTitle } from './formatter.js';
-import { HookPreInvocationOutput, QuotaSummary } from './types.js';
+import { HookPreInvocationOutput, QuotaSummary, SignalMode } from './types.js';
 
 /**
  * Builds the PreInvocation hook output object for Antigravity Language Server.
@@ -17,20 +17,22 @@ import { HookPreInvocationOutput, QuotaSummary } from './types.js';
  *
  * @param summary - Parsed quota summary containing model groups and tier information.
  * @param modelName - Optional current model name to highlight or filter.
- * @param options - Options controlling whether to show all models.
+ * @param options - Options controlling whether to show all models and signal display mode.
  * @returns PreInvocation hook output payload.
  */
 export function buildHookOutput(
   summary: QuotaSummary,
   modelName?: string,
-  options?: { forceAll?: boolean }
+  options?: { forceAll?: boolean; signalMode?: SignalMode }
 ): HookPreInvocationOutput {
   const markdown = formatHookMarkdown(summary, modelName, {
     forceAll: options?.forceAll,
+    signalMode: options?.signalMode,
   });
 
   const title = formatHookTitle(summary, modelName, {
     forceAll: options?.forceAll,
+    signalMode: options?.signalMode,
   });
 
   return {

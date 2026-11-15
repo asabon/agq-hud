@@ -1,8 +1,9 @@
 import { fetchFullQuota, parseQuotaSummary } from './client.js';
+import { parseSignalMode, resolveSignalMode } from './config.js';
 import { detectConnection } from './detector.js';
 import { formatCliTable } from './formatter.js';
 import { buildHookOutput } from './hook.js';
-import { HookInput } from './types.js';
+import { HookInput, SignalMode } from './types.js';
 
 export { buildHookOutput };
 
@@ -51,7 +52,7 @@ async function readStdin(): Promise<string> {
  *
  * @param flags - Command line flags controlling hook display options.
  */
-async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
+async function handleHookMode(flags: { showAll?: boolean; signalMode: SignalMode }): Promise<void> {
   try {
     const rawInput = await readStdin();
     let hookInput: HookInput = {};
@@ -74,6 +75,7 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
     const summary = parseQuotaSummary(statusData, quotaSummaryData);
     const output = buildHookOutput(summary, hookInput.modelName, {
       forceAll: flags.showAll,
+      signalMode: flags.signalMode,
     });
 
     process.stdout.write(JSON.stringify(output) + '\n');
@@ -86,9 +88,14 @@ async function handleHookMode(flags: { showAll?: boolean }): Promise<void> {
 /**
  * Handles standalone CLI execution mode, displaying quota tables or JSON output.
  *
- * @param flags - CLI flags controlling verbosity, JSON formatting, and model filters.
+ * @param flags - CLI flags controlling verbosity, JSON formatting, signal mode, and model filters.
  */
-async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: string }): Promise<void> {
+async function handleCliMode(flags: {
+  verbose: boolean;
+  json: boolean;
+  filter?: string;
+  signalMode: SignalMode;
+}): Promise<void> {
   try {
     const conn = await detectConnection();
     if (!conn) {
@@ -106,7 +113,7 @@ async function handleCliMode(flags: { verbose: boolean; json: boolean; filter?: 
     }
 
     const isTty = process.stdout.isTTY ?? true;
-    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter);
+    const table = formatCliTable(summary, flags.verbose, isTty, flags.filter, flags.signalMode);
     console.log(table);
   } catch (err) {
     console.error(`❌ Error fetching quota: ${(err as Error).message}`);
@@ -124,54 +131,121 @@ USAGE:
   agq-hud [OPTIONS] [FILTER]
 
 ARGUMENTS:
-  [FILTER]       Filter models by name or family (e.g., 'flash', 'claude')
+  [FILTER]               Filter models by name or family (e.g., 'flash', 'claude')
 
 OPTIONS:
-  --hook         Run in Lifecycle Hook mode (PreInvocation JSON contract)
-  --all          Display all models in HUD (disables active model filter)
-  -v, --verbose  Display all model sub-variants and detailed breakdown
-  --json         Output quota summary in raw JSON format
-  -V, --version  Show version number
-  -h, --help     Show this help message
+  --hook                 Run in Lifecycle Hook mode (PreInvocation JSON contract)
+  --all                  Display all models in HUD (disables active model filter)
+  --signal <mode>        Signal display mode: 'smart' (default) or 'threshold'
+  -v, --verbose          Display all model sub-variants and detailed breakdown
+  --json                 Output quota summary in raw JSON format
+  -V, --version          Show version number
+  -h, --help             Show this help message
+
+CONFIGURATION:
+  Precedence: --signal > AGQ_SIGNAL_MODE > ~/.gemini/config/agq-hud.json > 'smart'
 
 EXAMPLES:
-  agq-hud            Show concise quota summary table in terminal
-  agq-hud flash      Show quota for models matching 'flash'
-  agq-hud -v         Show detailed quota table with all variants
-  agq-hud --json     Get machine-readable quota data
+  agq-hud                    Show concise quota summary table in terminal
+  agq-hud --signal threshold Use fixed percentage thresholds instead of smart mode
+  agq-hud flash              Show quota for models matching 'flash'
+  agq-hud -v                 Show detailed quota table with all variants
+  agq-hud --json             Get machine-readable quota data
 `);
+}
+
+interface ParsedArgs {
+  showVersion: boolean;
+  showHelp: boolean;
+  hook: boolean;
+  showAll: boolean;
+  verbose: boolean;
+  json: boolean;
+  signalRaw?: string;
+  signalMissingValue: boolean;
+  filter?: string;
+}
+
+function parseCliArgs(args: string[]): ParsedArgs {
+  const parsed: ParsedArgs = {
+    showVersion: false,
+    showHelp: false,
+    hook: false,
+    showAll: false,
+    verbose: false,
+    json: false,
+    signalMissingValue: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--version' || arg === '-V') {
+      parsed.showVersion = true;
+    } else if (arg === '--help' || arg === '-h') {
+      parsed.showHelp = true;
+    } else if (arg === '--hook') {
+      parsed.hook = true;
+    } else if (arg === '--all' || arg === '-a') {
+      parsed.showAll = true;
+    } else if (arg === '-v' || arg === '--verbose') {
+      parsed.verbose = true;
+    } else if (arg === '--json') {
+      parsed.json = true;
+    } else if (arg === '--signal') {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith('-')) {
+        parsed.signalRaw = next;
+        i++;
+      } else {
+        parsed.signalMissingValue = true;
+      }
+    } else if (arg.startsWith('--signal=')) {
+      parsed.signalRaw = arg.slice('--signal='.length);
+    } else if (!arg.startsWith('-') && parsed.filter === undefined) {
+      parsed.filter = arg;
+    }
+  }
+
+  return parsed;
 }
 
 /**
  * Application entry point for agq-hud CLI and lifecycle hook execution.
  */
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const parsed = parseCliArgs(process.argv.slice(2));
 
-  if (args.includes('--version') || args.includes('-V')) {
+  if (parsed.showVersion) {
     console.log(`agq-hud v${VERSION}`);
     return;
   }
 
-  if (args.includes('--help') || args.includes('-h')) {
+  if (parsed.showHelp) {
     printHelp();
     return;
   }
 
-  const showAll = args.includes('--all') || args.includes('-a');
+  if (!parsed.hook && (parsed.signalMissingValue || (parsed.signalRaw !== undefined && !parseSignalMode(parsed.signalRaw)))) {
+    const detail = parsed.signalMissingValue
+      ? 'Missing value for --signal.'
+      : `Invalid --signal value: "${parsed.signalRaw}".`;
+    console.error(`❌ ${detail} Expected 'smart' or 'threshold'.`);
+    process.exit(1);
+  }
 
-  if (args.includes('--hook')) {
-    await handleHookMode({ showAll });
+  const signalMode = resolveSignalMode({ cliMode: parsed.signalRaw });
+
+  if (parsed.hook) {
+    await handleHookMode({ showAll: parsed.showAll, signalMode });
     return;
   }
 
-  const verbose = args.includes('-v') || args.includes('--verbose');
-  const json = args.includes('--json');
-
-  // Any non-flag positional argument is treated as a filter
-  const filter = args.find((arg) => !arg.startsWith('-'));
-
-  await handleCliMode({ verbose, json, filter });
+  await handleCliMode({
+    verbose: parsed.verbose,
+    json: parsed.json,
+    filter: parsed.filter,
+    signalMode,
+  });
 }
 
 main().catch((err) => {
