@@ -309,7 +309,10 @@ function parseQuotaSummary(data, quotaSummaryData) {
 
 // src/detector.ts
 var import_child_process = require("child_process");
+var import_fs = __toESM(require("fs"));
 var import_http2 = __toESM(require("http"));
+var import_os = __toESM(require("os"));
+var import_path = __toESM(require("path"));
 function probePort(port, csrfToken, timeoutMs = 400) {
   return new Promise((resolve) => {
     const req = import_http2.default.request(
@@ -444,7 +447,7 @@ function findUnixProcesses() {
     });
     const lines = psOut.split(/\n/);
     for (const line of lines) {
-      if (line.includes("language_server") && !line.includes("grep")) {
+      if ((line.includes("language_server") || /\bagy\b/.test(line)) && !line.includes("grep")) {
         const match = line.trim().match(/^(\d+)\s+(.+)$/);
         if (match) {
           const pid = Number(match[1]);
@@ -502,6 +505,50 @@ function findUnixListeningPorts(pid) {
   }
   return ports;
 }
+function getDefaultDaemonDir() {
+  const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || import_path.default.join(import_os.default.homedir(), ".gemini", "antigravity");
+  return import_path.default.join(appDataDir, "daemon");
+}
+function parseHubJsonFile(filePath, pid, extraPort) {
+  try {
+    const raw = import_fs.default.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    if (!data || typeof data.csrfToken !== "string" || !data.csrfToken) {
+      return null;
+    }
+    if (typeof data.pid === "number" && data.pid !== pid) {
+      return null;
+    }
+    const ports = [];
+    for (const candidate of [data.httpPort, extraPort]) {
+      if (typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0 && !ports.includes(candidate)) {
+        ports.push(candidate);
+      }
+    }
+    return { csrfToken: data.csrfToken, ports };
+  } catch {
+    return null;
+  }
+}
+function readHubDaemonInfo(pid, commandLine, daemonDir = getDefaultDaemonDir()) {
+  const hubPortMatch = commandLine.match(/--hub-port[=\s]+(\d+)/i);
+  if (hubPortMatch) {
+    const hubPort = Number(hubPortMatch[1]);
+    const info = parseHubJsonFile(import_path.default.join(daemonDir, `hub_${hubPort}.json`), pid, hubPort);
+    if (info) return info;
+  }
+  try {
+    const files = import_fs.default.readdirSync(daemonDir);
+    for (const file of files) {
+      if (!file.startsWith("hub_") || !file.endsWith(".json")) continue;
+      const filePath = import_path.default.join(daemonDir, file);
+      const info = parseHubJsonFile(filePath, pid);
+      if (info) return info;
+    }
+  } catch {
+  }
+  return null;
+}
 async function detectConnection() {
   const envAddress = process.env.ANTIGRAVITY_LS_ADDRESS;
   const envToken = process.env.ANTIGRAVITY_CSRF_TOKEN;
@@ -515,14 +562,26 @@ async function detectConnection() {
   const isWin = process.platform === "win32";
   const procs = isWin ? findWindowsProcesses() : findUnixProcesses();
   for (const proc of procs) {
-    if (!proc.csrfToken) continue;
-    const ports = isWin ? findWindowsListeningPorts(proc.pid) : findUnixListeningPorts(proc.pid);
-    for (const port of ports) {
-      const ok = await probePort(port, proc.csrfToken);
+    let csrfToken = proc.csrfToken;
+    const candidatePorts = [];
+    if (!csrfToken) {
+      const hubInfo = readHubDaemonInfo(proc.pid, proc.commandLine);
+      if (!hubInfo) continue;
+      csrfToken = hubInfo.csrfToken;
+      candidatePorts.push(...hubInfo.ports);
+    }
+    const listeningPorts = isWin ? findWindowsListeningPorts(proc.pid) : findUnixListeningPorts(proc.pid);
+    for (const p of listeningPorts) {
+      if (!candidatePorts.includes(p)) {
+        candidatePorts.push(p);
+      }
+    }
+    for (const port of candidatePorts) {
+      const ok = await probePort(port, csrfToken);
       if (ok) {
         return {
           address: `localhost:${port}`,
-          csrfToken: proc.csrfToken,
+          csrfToken,
           source: "process"
         };
       }
