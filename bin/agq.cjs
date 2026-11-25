@@ -468,7 +468,7 @@ function findUnixProcesses() {
 function findUnixListeningPorts(pid) {
   const ports = [];
   try {
-    const lsofOut = (0, import_child_process.execSync)(`lsof -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
+    const lsofOut = (0, import_child_process.execSync)(`lsof -a -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
       encoding: "utf8",
       timeout: 2e3,
       stdio: ["ignore", "pipe", "ignore"]
@@ -509,19 +509,21 @@ function getDefaultDaemonDir() {
   const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || import_path.default.join(import_os.default.homedir(), ".gemini", "antigravity");
   return import_path.default.join(appDataDir, "daemon");
 }
-function parseHubJsonFile(filePath, pid, extraPort) {
+function parseHubJsonFile(filePath, pid, options = {}) {
   try {
     const raw = import_fs.default.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw);
     if (!data || typeof data.csrfToken !== "string" || !data.csrfToken) {
       return null;
     }
-    if (typeof data.pid === "number" && data.pid !== pid) {
+    if (options.requirePid) {
+      if (data.pid !== pid) return null;
+    } else if (data.pid !== void 0 && data.pid !== pid) {
       return null;
     }
     const ports = [];
-    for (const candidate of [data.httpPort, extraPort]) {
-      if (typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0 && !ports.includes(candidate)) {
+    for (const candidate of [data.httpPort, options.extraPort]) {
+      if (typeof candidate === "number" && Number.isInteger(candidate) && candidate > 0 && candidate <= 65535 && !ports.includes(candidate)) {
         ports.push(candidate);
       }
     }
@@ -534,7 +536,7 @@ function readHubDaemonInfo(pid, commandLine, daemonDir = getDefaultDaemonDir()) 
   const hubPortMatch = commandLine.match(/--hub-port[=\s]+(\d+)/i);
   if (hubPortMatch) {
     const hubPort = Number(hubPortMatch[1]);
-    const info = parseHubJsonFile(import_path.default.join(daemonDir, `hub_${hubPort}.json`), pid, hubPort);
+    const info = parseHubJsonFile(import_path.default.join(daemonDir, `hub_${hubPort}.json`), pid, { extraPort: hubPort });
     if (info) return info;
   }
   try {
@@ -542,7 +544,7 @@ function readHubDaemonInfo(pid, commandLine, daemonDir = getDefaultDaemonDir()) 
     for (const file of files) {
       if (!file.startsWith("hub_") || !file.endsWith(".json")) continue;
       const filePath = import_path.default.join(daemonDir, file);
-      const info = parseHubJsonFile(filePath, pid);
+      const info = parseHubJsonFile(filePath, pid, { requirePid: true });
       if (info) return info;
     }
   } catch {

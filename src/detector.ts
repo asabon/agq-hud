@@ -190,7 +190,7 @@ function findUnixProcesses(): Array<{ pid: number; commandLine: string; csrfToke
 function findUnixListeningPorts(pid: number): number[] {
   const ports: number[] = [];
   try {
-    const lsofOut = execSync(`lsof -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
+    const lsofOut = execSync(`lsof -a -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
       encoding: 'utf8',
       timeout: 2000,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -243,7 +243,7 @@ function getDefaultDaemonDir(): string {
 function parseHubJsonFile(
   filePath: string,
   pid: number,
-  extraPort?: number
+  options: { extraPort?: number; requirePid?: boolean } = {}
 ): HubDaemonInfo | null {
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
@@ -255,12 +255,20 @@ function parseHubJsonFile(
     if (!data || typeof data.csrfToken !== 'string' || !data.csrfToken) {
       return null;
     }
-    if (typeof data.pid === 'number' && data.pid !== pid) {
+    if (options.requirePid) {
+      if (data.pid !== pid) return null;
+    } else if (data.pid !== undefined && data.pid !== pid) {
       return null;
     }
     const ports: number[] = [];
-    for (const candidate of [data.httpPort, extraPort]) {
-      if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate > 0 && !ports.includes(candidate)) {
+    for (const candidate of [data.httpPort, options.extraPort]) {
+      if (
+        typeof candidate === 'number' &&
+        Number.isInteger(candidate) &&
+        candidate > 0 &&
+        candidate <= 65535 &&
+        !ports.includes(candidate)
+      ) {
         ports.push(candidate);
       }
     }
@@ -283,7 +291,7 @@ export function readHubDaemonInfo(
   const hubPortMatch = commandLine.match(/--hub-port[=\s]+(\d+)/i);
   if (hubPortMatch) {
     const hubPort = Number(hubPortMatch[1]);
-    const info = parseHubJsonFile(path.join(daemonDir, `hub_${hubPort}.json`), pid, hubPort);
+    const info = parseHubJsonFile(path.join(daemonDir, `hub_${hubPort}.json`), pid, { extraPort: hubPort });
     if (info) return info;
   }
 
@@ -294,7 +302,7 @@ export function readHubDaemonInfo(
     for (const file of files) {
       if (!file.startsWith('hub_') || !file.endsWith('.json')) continue;
       const filePath = path.join(daemonDir, file);
-      const info = parseHubJsonFile(filePath, pid);
+      const info = parseHubJsonFile(filePath, pid, { requirePid: true });
       if (info) return info;
     }
   } catch {
