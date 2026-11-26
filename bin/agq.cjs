@@ -941,7 +941,7 @@ async function handleCliMode(flags) {
     process.exit(1);
   }
 }
-var VERSION = "0.1.0";
+var VERSION = "0.1.1";
 function printHelp() {
   console.log(`
 agq-hud - Antigravity AI Model Quota HUD & CLI (v${VERSION})

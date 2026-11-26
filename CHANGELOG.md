@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.1.1] - 2026-11-27
+
+### Fixed
+- **Antigravity Hub Process Detection (`daemon/hub_<port>.json`)**:
+  - Added fallback detection reading `csrfToken` and `httpPort` from `daemon/hub_<port>.json` (`ANTIGRAVITY_APP_DATA_DIR/daemon` or `~/.gemini/antigravity/daemon`) for Antigravity `2.34.0+` / `2.35.2` hub processes that no longer pass `--csrf_token` on the command line (#17).
+  - Supports both `--hub-port` flag lookup and exact PID matching across `daemon/hub_*.json`, with port range validation (`1..65535`).
+  - Added `-a` to `lsof` in `findUnixListeningPorts` so only the target process's listening sockets are probed, and included `agy` processes in Unix process discovery.
+
+### Documentation & Maintenance
+- Updated `README.md` and `README.ja.md` with latest features, uninstallation, and disabling instructions (#13, #14).
+- Added AI Review Status Sync workflow (#16).
+
 ## [v0.1.0] - 2026-11-08
 
 ### Added
