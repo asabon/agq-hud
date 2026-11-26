@@ -1,5 +1,8 @@
 import { execSync } from 'child_process';
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import { ConnectionInfo } from './types.js';
 
 /**
@@ -161,7 +164,7 @@ function findUnixProcesses(): Array<{ pid: number; commandLine: string; csrfToke
     });
     const lines = psOut.split(/\n/);
     for (const line of lines) {
-      if (line.includes('language_server') && !line.includes('grep')) {
+      if ((line.includes('language_server') || /\bagy\b/.test(line)) && !line.includes('grep')) {
         const match = line.trim().match(/^(\d+)\s+(.+)$/);
         if (match) {
           const pid = Number(match[1]);
@@ -187,7 +190,7 @@ function findUnixProcesses(): Array<{ pid: number; commandLine: string; csrfToke
 function findUnixListeningPorts(pid: number): number[] {
   const ports: number[] = [];
   try {
-    const lsofOut = execSync(`lsof -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
+    const lsofOut = execSync(`lsof -a -iTCP -sTCP:LISTEN -n -P -p ${pid} 2>/dev/null`, {
       encoding: 'utf8',
       timeout: 2000,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -227,6 +230,88 @@ function findUnixListeningPorts(pid: number): number[] {
   return ports;
 }
 
+export interface HubDaemonInfo {
+  csrfToken: string;
+  ports: number[];
+}
+
+function getDefaultDaemonDir(): string {
+  const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || path.join(os.homedir(), '.gemini', 'antigravity');
+  return path.join(appDataDir, 'daemon');
+}
+
+function parseHubJsonFile(
+  filePath: string,
+  pid: number,
+  options: { extraPort?: number; requirePid?: boolean } = {}
+): HubDaemonInfo | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const data = JSON.parse(raw) as {
+      pid?: unknown;
+      httpPort?: unknown;
+      csrfToken?: unknown;
+    };
+    if (!data || typeof data.csrfToken !== 'string' || !data.csrfToken) {
+      return null;
+    }
+    if (options.requirePid) {
+      if (data.pid !== pid) return null;
+    } else if (data.pid !== undefined && data.pid !== pid) {
+      return null;
+    }
+    const ports: number[] = [];
+    for (const candidate of [data.httpPort, options.extraPort]) {
+      if (
+        typeof candidate === 'number' &&
+        Number.isInteger(candidate) &&
+        candidate > 0 &&
+        candidate <= 65535 &&
+        !ports.includes(candidate)
+      ) {
+        ports.push(candidate);
+      }
+    }
+    return { csrfToken: data.csrfToken, ports };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read CSRF token and port info from ~/.gemini/antigravity/daemon/hub_<port>.json
+ * for Antigravity hub processes (2.34.0+) that no longer pass --csrf_token on the CLI.
+ */
+export function readHubDaemonInfo(
+  pid: number,
+  commandLine: string,
+  daemonDir = getDefaultDaemonDir()
+): HubDaemonInfo | null {
+  // Fast path: --hub-port=<port> or --hub-port <port> on command line
+  const hubPortMatch = commandLine.match(/--hub-port[=\s]+(\d+)/i);
+  if (hubPortMatch) {
+    const hubPort = Number(hubPortMatch[1]);
+    const info = parseHubJsonFile(path.join(daemonDir, `hub_${hubPort}.json`), pid, { extraPort: hubPort });
+    if (info) return info;
+  }
+
+  // Fallback: scan daemon/hub_*.json and match by exact PID
+  // (e.g., language_server 2.35.2 --subclient_type hub omits --hub-port)
+  try {
+    const files = fs.readdirSync(daemonDir);
+    for (const file of files) {
+      if (!file.startsWith('hub_') || !file.endsWith('.json')) continue;
+      const filePath = path.join(daemonDir, file);
+      const info = parseHubJsonFile(filePath, pid, { requirePid: true });
+      if (info) return info;
+    }
+  } catch {
+    // Daemon directory may not exist
+  }
+
+  return null;
+}
+
 /**
  * Detect connection info to Antigravity Language Server
  */
@@ -248,16 +333,29 @@ export async function detectConnection(): Promise<ConnectionInfo | null> {
   const procs = isWin ? findWindowsProcesses() : findUnixProcesses();
 
   for (const proc of procs) {
-    if (!proc.csrfToken) continue;
+    let csrfToken = proc.csrfToken;
+    const candidatePorts: number[] = [];
 
-    const ports = isWin ? findWindowsListeningPorts(proc.pid) : findUnixListeningPorts(proc.pid);
+    if (!csrfToken) {
+      const hubInfo = readHubDaemonInfo(proc.pid, proc.commandLine);
+      if (!hubInfo) continue;
+      csrfToken = hubInfo.csrfToken;
+      candidatePorts.push(...hubInfo.ports);
+    }
 
-    for (const port of ports) {
-      const ok = await probePort(port, proc.csrfToken);
+    const listeningPorts = isWin ? findWindowsListeningPorts(proc.pid) : findUnixListeningPorts(proc.pid);
+    for (const p of listeningPorts) {
+      if (!candidatePorts.includes(p)) {
+        candidatePorts.push(p);
+      }
+    }
+
+    for (const port of candidatePorts) {
+      const ok = await probePort(port, csrfToken);
       if (ok) {
         return {
           address: `localhost:${port}`,
-          csrfToken: proc.csrfToken,
+          csrfToken,
           source: 'process',
         };
       }
