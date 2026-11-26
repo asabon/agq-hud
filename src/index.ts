@@ -121,7 +121,7 @@ async function handleCliMode(flags: {
   }
 }
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 
 function printHelp(): void {
   console.log(`

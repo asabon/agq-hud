@@ -356,10 +356,10 @@ function resolveSignalMode(options) {
 
 // src/detector.ts
 var import_child_process = require("child_process");
-var import_fs = __toESM(require("fs"));
+var import_fs2 = __toESM(require("fs"));
 var import_http2 = __toESM(require("http"));
-var import_os = __toESM(require("os"));
-var import_path = __toESM(require("path"));
+var import_os2 = __toESM(require("os"));
+var import_path2 = __toESM(require("path"));
 function probePort(port, csrfToken, timeoutMs = 400) {
   return new Promise((resolve) => {
     const req = import_http2.default.request(
@@ -553,12 +553,12 @@ function findUnixListeningPorts(pid) {
   return ports;
 }
 function getDefaultDaemonDir() {
-  const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || import_path.default.join(import_os.default.homedir(), ".gemini", "antigravity");
-  return import_path.default.join(appDataDir, "daemon");
+  const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || import_path2.default.join(import_os2.default.homedir(), ".gemini", "antigravity");
+  return import_path2.default.join(appDataDir, "daemon");
 }
 function parseHubJsonFile(filePath, pid, options = {}) {
   try {
-    const raw = import_fs.default.readFileSync(filePath, "utf8");
+    const raw = import_fs2.default.readFileSync(filePath, "utf8");
     const data = JSON.parse(raw);
     if (!data || typeof data.csrfToken !== "string" || !data.csrfToken) {
       return null;
@@ -583,14 +583,14 @@ function readHubDaemonInfo(pid, commandLine, daemonDir = getDefaultDaemonDir()) 
   const hubPortMatch = commandLine.match(/--hub-port[=\s]+(\d+)/i);
   if (hubPortMatch) {
     const hubPort = Number(hubPortMatch[1]);
-    const info = parseHubJsonFile(import_path.default.join(daemonDir, `hub_${hubPort}.json`), pid, { extraPort: hubPort });
+    const info = parseHubJsonFile(import_path2.default.join(daemonDir, `hub_${hubPort}.json`), pid, { extraPort: hubPort });
     if (info) return info;
   }
   try {
-    const files = import_fs.default.readdirSync(daemonDir);
+    const files = import_fs2.default.readdirSync(daemonDir);
     for (const file of files) {
       if (!file.startsWith("hub_") || !file.endsWith(".json")) continue;
-      const filePath = import_path.default.join(daemonDir, file);
+      const filePath = import_path2.default.join(daemonDir, file);
       const info = parseHubJsonFile(filePath, pid, { requirePid: true });
       if (info) return info;
     }
@@ -1045,7 +1045,7 @@ async function handleCliMode(flags) {
     process.exit(1);
   }
 }
-var VERSION = "0.1.1";
+var VERSION = "0.2.0";
 function printHelp() {
   console.log(`
 agq-hud - Antigravity AI Model Quota HUD & CLI (v${VERSION})

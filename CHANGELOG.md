@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.0] - 2026-11-27
+
+### Added
+- **Smart Signal Mode (`smart`) & Selectable Signal Display**:
+  - Introduced `smart` mode as default alongside `threshold` (fixed cutoff) mode, applied consistently across both the PreInvocation chat HUD and the CLI table (#15).
+  - **Pace-Aware Continuous Model for `1w` (weekly) Quotas**: Calculates smoothed consumption pace `P = (U + W0) / (e + W0)` with initial warmup buffer `W0 = 15` and HoldRatio `(R / P) / r_t` to prevent abrupt color jumps at cycle boundaries (`HoldRatio >= 0.90` 🟢, `>= 0.60` 🟡, `< 0.60` or empty 🔴).
+  - **Flexible Configuration Support**:
+    - CLI option: `--signal <smart|threshold>` (supports `--signal=<mode>` as well).
+    - Environment variable: `AGQ_SIGNAL_MODE`.
+    - Persistent configuration file: `~/.gemini/config/agq-hud.json` (`{ "signalMode": "smart" }`).
+    - Precedence: CLI option > environment variable > config file > `smart` (default).
+
+### Changed
+- **Unified 3-Tier Status Badges**:
+  - Replaced `⚠️` with 🟢 / 🟡 / 🔴 across both `smart` and `threshold` modes.
+  - Standardized fixed threshold boundaries: `>= 60%` 🟢, `25% <= R < 60%` 🟡, `< 25%` 🔴 (applied to `5h` burst buckets, buckets without reset timing, and full `threshold` mode).
+  - Unified terminal ANSI color code for 🟡 to yellow (`\x1b[33m`).
+
+### Quality & Testing
+- Added unit tests for signal mode resolution precedence and config loading (`test/config.test.ts`).
+- Added tests for continuous HoldRatio calculations, weekly vs 5h badge assignments, and CLI/hook formatting consistency (`test/formatter.test.ts`).
+- Isolated process-level environment variables (`AGQ_HUD_FORMAT`, `AGQ_SHOW_ALL`, `AGQ_SIGNAL_MODE`) in test suites to prevent developer environment leakage.
+
 ## [v0.1.1] - 2026-11-27
 
 ### Fixed
